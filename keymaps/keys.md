@@ -180,7 +180,10 @@ not capture typing in the editor. With `<` carrying the project-window pair, all
 
 ## Appendix B — Actions that lose an alternative but stay reachable (15)
 
-| Action                        | Dead binding                    | Surviving binding              |
+The dead alternates listed here were **removed from the keymap on 2026-07-19** so they don't show up as ghost
+shortcuts in the keymap UI — each action keeps only its surviving binding(s).
+
+| Action                        | Removed dead binding            | Surviving binding              |
 |-------------------------------|---------------------------------|--------------------------------|
 | `$Copy`                       | `control INSERT`                | `control C`                    |
 | `$Paste`                      | `shift INSERT`                  | `control V`                    |

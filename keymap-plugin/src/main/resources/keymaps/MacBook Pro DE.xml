@@ -1,7 +1,6 @@
 <keymap name="MacBook Pro DE" parent="Mac OS X 10.5+" version="1" disable-mnemonics="true">
   <action id="$Copy">
     <keyboard-shortcut first-keystroke="control C"/>
-    <keyboard-shortcut first-keystroke="control INSERT"/>
   </action>
   <action id="$Cut">
     <keyboard-shortcut first-keystroke="control X"/>
@@ -14,7 +13,6 @@
   </action>
   <action id="$Paste">
     <keyboard-shortcut first-keystroke="control V"/>
-    <keyboard-shortcut first-keystroke="shift INSERT"/>
   </action>
   <action id="$Redo">
     <keyboard-shortcut first-keystroke="control shift Z"/>
@@ -71,7 +69,6 @@
     <keyboard-shortcut first-keystroke="control alt I"/>
   </action>
   <action id="Back">
-    <keyboard-shortcut first-keystroke="meta OPEN_BRACKET"/>
     <keyboard-shortcut first-keystroke="meta alt LEFT"/>
     <mouse-shortcut keystroke="button4"/>
   </action>
@@ -140,11 +137,9 @@
     <keyboard-shortcut first-keystroke="alt shift I"/>
   </action>
   <action id="CollapseAll">
-    <keyboard-shortcut first-keystroke="control SUBTRACT"/>
     <keyboard-shortcut first-keystroke="control MINUS"/>
   </action>
   <action id="CollapseAllRegions">
-    <keyboard-shortcut first-keystroke="control shift SUBTRACT"/>
     <keyboard-shortcut first-keystroke="control shift MINUS"/>
   </action>
   <action id="CollapseBlock">
@@ -152,15 +147,12 @@
   </action>
   <action id="CollapseExpandableComponent">
     <keyboard-shortcut first-keystroke="shift ENTER"/>
-    <keyboard-shortcut first-keystroke="control SUBTRACT"/>
     <keyboard-shortcut first-keystroke="control MINUS"/>
   </action>
   <action id="CollapseRegion">
-    <keyboard-shortcut first-keystroke="control SUBTRACT"/>
     <keyboard-shortcut first-keystroke="control MINUS"/>
   </action>
   <action id="CollapseRegionRecursively">
-    <keyboard-shortcut first-keystroke="control alt SUBTRACT"/>
     <keyboard-shortcut first-keystroke="control alt MINUS"/>
   </action>
   <action id="CollapseSelection">
@@ -477,7 +469,6 @@
   </action>
   <action id="EditorToggleColumnMode">
     <keyboard-shortcut first-keystroke="shift meta 8"/>
-    <keyboard-shortcut first-keystroke="shift meta MULTIPLY"/>
   </action>
   <action id="EditorToggleInsertState">
     <keyboard-shortcut first-keystroke="meta #10000fc"/>
@@ -534,8 +525,6 @@
   </action>
   <action id="ExpandExpandableComponent">
     <keyboard-shortcut first-keystroke="shift ENTER"/>
-    <keyboard-shortcut first-keystroke="control ADD"/>
-    <keyboard-shortcut first-keystroke="control EQUALS"/>
   </action>
   <action id="ExpandLiveTemplateByTab">
     <keyboard-shortcut first-keystroke="TAB"/>
@@ -595,7 +584,6 @@
     <keyboard-shortcut first-keystroke="meta NUMBER_SIGN"/>
   </action>
   <action id="FileChooser.NewFolder">
-    <keyboard-shortcut first-keystroke="alt INSERT"/>
     <keyboard-shortcut first-keystroke="control N"/>
   </action>
   <action id="FileChooser.TogglePathBar">
@@ -640,7 +628,6 @@
     <keyboard-shortcut first-keystroke="alt shift F8"/>
   </action>
   <action id="Forward">
-    <keyboard-shortcut first-keystroke="meta CLOSE_BRACKET"/>
     <keyboard-shortcut first-keystroke="meta alt RIGHT"/>
     <mouse-shortcut keystroke="button5"/>
   </action>
@@ -901,7 +888,6 @@
   </action>
   <action id="PasteMultiple">
     <keyboard-shortcut first-keystroke="control shift V"/>
-    <keyboard-shortcut first-keystroke="control shift INSERT"/>
   </action>
   <action id="PopupHector">
     <keyboard-shortcut first-keystroke="ctrl alt shift H"/>
