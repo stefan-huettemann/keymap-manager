@@ -16,5 +16,13 @@
 
   <extensions defaultExtensionNs="com.intellij">
     <bundledKeymap file="MacBook Pro DE.xml"/>
+    <notificationGroup id="MacBook Pro DE Keymap" displayType="STICKY_BALLOON"/>
   </extensions>
+
+  <applicationListeners>
+    <listener class="de.civa.keymap.NationalLayoutCheck"
+              topic="com.intellij.openapi.keymap.KeymapManagerListener"/>
+    <listener class="de.civa.keymap.NationalLayoutCheck"
+              topic="com.intellij.ide.AppLifecycleListener"/>
+  </applicationListeners>
 </idea-plugin>

@@ -74,6 +74,12 @@ unused).
 The German T1 layout has physical keys that stock US-ANSI keymaps never bind — some don't exist on a US keyboard at all.
 None of them were used in the original merged keymap; **all seven are now carrying the Appendix A and C rebinds**.
 
+> **Runtime requirement:** the JetBrains Runtime only reports these keys while national keyboard layout support is
+> active — JBR property `com.sun.awt.use.national.layouts`, **`true` by default on macOS**, surfaced as
+> Settings → Keymap → "Use national keyboard layouts for shortcuts" (backed by the platform API
+> `NationalKeyboardSupport`, persisted in `ui.lnf.xml`; changing it requires a restart). Plugin 1.1.0+ ships
+> `NationalLayoutCheck`, which warns with a one-click fix when the keymap is selected while the support is off.
+
 | Key       | Token in keymap XML                 | Key code                 | Status                                                                  |
 |-----------|-------------------------------------|--------------------------|-------------------------------------------------------------------------|
 | `Ä` / `ä` | `#10000c4`                          | `0x010000C4` (extended)  | ✅ verified: IDE export + JVM                                           |

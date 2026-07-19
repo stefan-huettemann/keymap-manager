@@ -29,7 +29,7 @@ Install/activation steps for the built ZIP: `keymap-plugin/INSTALL.md`.
 - `keymaps/$default.xml`, `keymaps/Mac OS X 10.5+.xml` — reference copies of the platform keymaps. All three keymap files are sorted alphabetically by action id for side-by-side diffing; keep them sorted.
 - `keymaps/orig/` — pristine platform exports; do not modify.
 - `keymaps/keys.md` — generated audit of every modifier/key used, with German-layout reachability. Appendix A (37 actions with no reachable binding) is the rebinding work list.
-- `keymap-plugin/` — resource-only Gradle project: `plugin.xml` + the keymap XML, wired via the `bundledKeymap` extension point. **No Java/Kotlin code, ever** — if a `.kt`/`.java` file appears, something went wrong.
+- `keymap-plugin/` — Gradle project: `plugin.xml` + the keymap XML, wired via the `bundledKeymap` extension point, plus exactly one Java class, `NationalLayoutCheck` — it warns (with a one-click fix) when the keymap is selected while JBR national keyboard layout support (`com.sun.awt.use.national.layouts`, default on for macOS) is disabled, without which the German-key bindings never fire. Keep the code surface at this minimum; the plugin's job is the keymap, not features.
 
 ## Keymap XML invariants
 
