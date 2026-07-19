@@ -1,0 +1,16 @@
+<idea-plugin>
+  <id>de.civa.keymap</id>
+  <name>CIVA Keymap</name>
+  <vendor email="stefan.huettemann@civa.de">CIVA</vendor>
+
+  <description><![CDATA[
+    Adds the CIVA MacOS keymap for macOS. After installing, select
+    <b>CIVA MacOS</b> under Settings &rarr; Keymap.
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <bundledKeymap file="CIVA MacOS.xml"/>
+  </extensions>
+</idea-plugin>
