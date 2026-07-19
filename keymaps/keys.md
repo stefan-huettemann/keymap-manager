@@ -68,6 +68,36 @@ and double-tap ⇧ (`SearchEverywhere`). Both ✅.
 Of the 8 key codes the handover forbids for German layouts, 7 appear in this keymap
 (`BACK_SLASH` is the only one unused).
 
+## Bindable German keys: Ä Ö Ü ß — verified
+
+These four keys have no `VK_` constant, but IntelliJ binds them via extended key
+codes written as `#hex` tokens. **Verified 2026-07-19 on this machine**, both by
+exporting a test binding from IntelliJ IDEA 2026.2 and by recomputing via the JVM
+(`KeyEvent.getExtendedKeyCodeForChar`, Corretto 17) — both agree:
+
+| Key | Token in keymap XML | Extended key code |
+|---|---|---|
+| `Ä` / `ä` | `#10000c4` | `0x010000C4` |
+| `Ö` / `ö` | `#10000d6` | `0x010000D6` |
+| `Ü` / `ü` | `#10000fc` | `0x010000FC` |
+| `ß` | `#10000df` | `0x010000DF` |
+
+Usage — lowercase hex, `#` prefix, modifiers first:
+
+```xml
+<keyboard-shortcut first-keystroke="meta #10000c4"/>        <!-- ⌘Ä -->
+<keyboard-shortcut first-keystroke="meta shift #10000d6"/>  <!-- ⌘⇧Ö -->
+```
+
+Notes:
+
+- The code is per *physical key* — upper and lower case yield the same token.
+- ⚠️ `Ü` breaks the pattern: it uses the **lowercase** codepoint (`fc`, not `dc`),
+  while `Ä`/`Ö` use the uppercase one. Never derive these codes by hand; copy them
+  from this table or re-export from the IDE.
+- These are unshifted, home-row-adjacent keys that no stock keymap competes for —
+  the prime candidates for rebinding the Appendix A actions below.
+
 ## Appendix A — Actions with NO reachable binding (37)
 
 Every keyboard shortcut of these actions uses a ❌/⚠️ key, so on a German MacBook Pro
