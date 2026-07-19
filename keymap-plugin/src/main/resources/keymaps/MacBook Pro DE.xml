@@ -1,4 +1,4 @@
-<keymap name="CIVA MacOS" parent="Mac OS X 10.5+" version="1" disable-mnemonics="true">
+<keymap name="MacBook Pro DE" parent="Mac OS X 10.5+" version="1" disable-mnemonics="true">
   <action id="$Copy">
     <keyboard-shortcut first-keystroke="control C"/>
     <keyboard-shortcut first-keystroke="control INSERT"/>

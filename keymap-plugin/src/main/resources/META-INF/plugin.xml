@@ -4,13 +4,17 @@
   <vendor email="stefan.huettemann@civa.de">CIVA</vendor>
 
   <description><![CDATA[
-    Adds the CIVA MacOS keymap for macOS. After installing, select
-    <b>CIVA MacOS</b> under Settings &rarr; Keymap.
+    Adds the <b>MacBook Pro DE</b> keymap: a macOS keymap for MacBook Pro
+    keyboards with German (T1) layout, avoiding shortcuts that are physically
+    unpressable there (keys like <code>/ = ; ' ` [ ]</code> exist only as
+    Shift/Option chords on the German layout, and there is no numpad or Insert
+    key). After installing, select <b>MacBook Pro DE</b> under
+    Settings &rarr; Keymap.
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>
 
   <extensions defaultExtensionNs="com.intellij">
-    <bundledKeymap file="CIVA MacOS.xml"/>
+    <bundledKeymap file="MacBook Pro DE.xml"/>
   </extensions>
 </idea-plugin>

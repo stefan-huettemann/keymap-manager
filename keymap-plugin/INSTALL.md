@@ -1,6 +1,6 @@
 # Installing the CIVA Keymap Plugin
 
-The plugin ships the **CIVA MacOS** keymap for all JetBrains IDEs (IntelliJ IDEA,
+The plugin ships the **MacBook Pro DE** keymap for all JetBrains IDEs (IntelliJ IDEA,
 PyCharm, CLion, …) on macOS.
 
 ## What you need
@@ -36,10 +36,10 @@ own plugins):
 ## Part 2 — Activate the keymap
 
 1. Open **Settings** (`⌘ ,`) → **Keymap**.
-2. In the dropdown at the top, select **CIVA MacOS**.
+2. In the dropdown at the top, select **MacBook Pro DE**.
 3. Click **Apply** / **OK**.
 
-Verify: the dropdown shows *CIVA MacOS*, and e.g. `⌘⇧G` triggers *Find Previous*.
+Verify: the dropdown shows *MacBook Pro DE*, and e.g. `⌘⇧G` triggers *Find Previous*.
 
 ---
 
@@ -52,7 +52,7 @@ JetBrains account.
 > **Important limitation:** Backup and Sync only auto-installs plugins that come
 > from the JetBrains Marketplace. This plugin is installed **from disk**, so sync
 > cannot install it on your other machines/IDEs. Do **Part 1 on every
-> installation first** — otherwise those IDEs won't know the *CIVA MacOS* keymap
+> installation first** — otherwise those IDEs won't know the *MacBook Pro DE* keymap
 > and will silently fall back to the default (macOS) keymap.
 
 Step by step:
@@ -75,7 +75,7 @@ Step by step:
    2. Enable **Backup and Sync** the same way, logging into the **same JetBrains
       Account**, and choose to **get settings from the account** when asked.
    3. Restart or wait a moment: **Settings → Keymap** should now show
-      **CIVA MacOS** as the active keymap.
+      **MacBook Pro DE** as the active keymap.
 
 ---
 
@@ -83,11 +83,11 @@ Step by step:
 
 | Symptom | Cause / fix |
 |---|---|
-| Keymap dropdown has no *CIVA MacOS* entry | Plugin not installed or disabled in this IDE. Check **Settings → Plugins → Installed** for *CIVA Keymap*. |
+| Keymap dropdown has no *MacBook Pro DE* entry | Plugin not installed or disabled in this IDE. Check **Settings → Plugins → Installed** for *CIVA Keymap*. |
 | Another installation reverted to the *macOS* keymap | The plugin isn't installed there — sync only transfers the keymap *selection*, not the from-disk plugin. Do Part 1 on that installation. |
 | Shortcuts behave oddly after an IDE update | Check `Help → Show Log in Finder` (`idea.log`) for `Cannot find parent scheme` or `Cannot find keymaps/...` warnings and reinstall the plugin ZIP. |
-| Want to tweak a shortcut | Just change it in **Settings → Keymap** while *CIVA MacOS* is active — the IDE stores your change as a personal override on top of the plugin keymap, and Backup and Sync distributes it. |
+| Want to tweak a shortcut | Just change it in **Settings → Keymap** while *MacBook Pro DE* is active — the IDE stores your change as a personal override on top of the plugin keymap, and Backup and Sync distributes it. |
 
-**Do not rename** the keymap (`name="CIVA MacOS"`) in future plugin versions —
+**Do not rename** the keymap (`name="MacBook Pro DE"`) in future plugin versions —
 every installation that has it selected would silently revert to the default
 keymap.

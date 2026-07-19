@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-A **JetBrains plugins project** (see `README.md`). The active plugin is a keymap plugin: `CIVA Keymap` (ID `de.civa.keymap`) bundles the **CIVA MacOS** keymap for all JetBrains IDEs on macOS. The driving constraint is a **German (T1/ISO) keyboard on a MacBook Pro** — many stock IntelliJ bindings are physically unpressable there and are being replaced.
+A **JetBrains plugins project** (see `README.md`). The active plugin is a keymap plugin: `CIVA Keymap` (ID `de.civa.keymap`) bundles the **MacBook Pro DE** keymap for all JetBrains IDEs on macOS. The driving constraint is a **German (T1/ISO) keyboard on a MacBook Pro** — many stock IntelliJ bindings are physically unpressable there and are being replaced.
 
 `handover-unreachable-keys.md` is the canonical background document: platform internals (verified against intellij-community source), the German-layout constraint, and the umlaut hex-encoding trick. Read it before touching keymap XML.
 
@@ -24,8 +24,8 @@ Install/activation steps for the built ZIP: `keymap-plugin/INSTALL.md`.
 
 ## Structure and data flow
 
-- `keymaps/CIVA MacOS.xml` — **working copy / source of truth** for the keymap. It is a *flattened* merge of `$default.xml` and `Mac OS X 10.5+.xml` (Mac entries win; stale conflicting shortcuts pruned): all ~447 bindings are re-stated explicitly even though `parent="Mac OS X 10.5+"` would inherit most, deliberately pinning them against upstream changes.
-- `keymap-plugin/src/main/resources/keymaps/CIVA MacOS.xml` — the plugin resource, a **manual copy** of the file above. After editing the working copy, `cp` it here and rebuild; nothing syncs them automatically.
+- `keymaps/MacBook Pro DE.xml` — **working copy / source of truth** for the keymap. It is a *flattened* merge of `$default.xml` and `Mac OS X 10.5+.xml` (Mac entries win; stale conflicting shortcuts pruned): all ~447 bindings are re-stated explicitly even though `parent="Mac OS X 10.5+"` would inherit most, deliberately pinning them against upstream changes.
+- `keymap-plugin/src/main/resources/keymaps/MacBook Pro DE.xml` — the plugin resource, a **manual copy** of the file above. After editing the working copy, `cp` it here and rebuild; nothing syncs them automatically.
 - `keymaps/$default.xml`, `keymaps/Mac OS X 10.5+.xml` — reference copies of the platform keymaps. All three keymap files are sorted alphabetically by action id for side-by-side diffing; keep them sorted.
 - `keymaps/orig/` — pristine platform exports; do not modify.
 - `keymaps/keys.md` — generated audit of every modifier/key used, with German-layout reachability. Appendix A (37 actions with no reachable binding) is the rebinding work list.
@@ -33,7 +33,7 @@ Install/activation steps for the built ZIP: `keymap-plugin/INSTALL.md`.
 
 ## Keymap XML invariants
 
-- Filename and the `name=` attribute must match exactly (`CIVA MacOS` / `CIVA MacOS.xml`). **Never rename the keymap** — users who selected it would be silently reverted to the default.
+- Filename and the `name=` attribute must match exactly (`MacBook Pro DE` / `MacBook Pro DE.xml`). **Never rename the keymap** — users who selected it would be silently reverted to the default.
 - `parent="Mac OS X 10.5+"`. The name must not start with `Mac OS X` and must not reuse a reserved keymap name (list in `handover-unreachable-keys.md` §3.6).
 - Empty `<action id="X"/>` elements are **load-bearing** — they clear bindings inherited from the parent. Do not remove them as cleanup.
 - German-layout rule: bindings address *physical keys* (VK codes), not characters. Never bind `SLASH`, `BACK_SLASH`, `OPEN_BRACKET`, `CLOSE_BRACKET`, `SEMICOLON`, `QUOTE`, `BACK_QUOTE`, `EQUALS` (no physical key on German T1), `INSERT` (no Mac key), or numpad keys `ADD`/`SUBTRACT`/`MULTIPLY`/`DIVIDE`/`NUMPADn` (MacBook Pro has no numpad).
@@ -44,3 +44,4 @@ Install/activation steps for the built ZIP: `keymap-plugin/INSTALL.md`.
 - The platform dependency must use the Maven repository, not installers: `intellijIdeaCommunity("2026.1.4") { useInstaller = false }` — installer URL resolution fails for this version. Note `useInstaller` is set inside the configuration lambda; the named-parameter form no longer exists in IntelliJ Platform Gradle Plugin 2.18+.
 - `buildSearchableOptions = false` stays off — the task boots a headless IDE for nothing in a resource-only plugin.
 - `sinceBuild = "261"` with **no** `untilBuild` is deliberate: the plugin has no API surface, so capping compatibility only forces pointless re-releases.
+- The build prints "IntelliJ IDEA Community (IC) is no longer published since 2025.3, use: intellijIdea(...)". The pinned `intellijIdeaCommunity("2026.1.4")` still resolves; switch to `intellijIdea("...")` when next bumping the platform version.
