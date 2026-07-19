@@ -6,6 +6,7 @@ import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
+import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.keymap.Keymap;
@@ -26,7 +27,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * ({@code com.sun.awt.use.national.layouts}, on by default on macOS) is enabled.
  * Warns when the keymap is selected while that support is off, and offers the same
  * fix the Settings → Keymap checkbox applies: persist the setting, write the VM
- * option, restart.
+ * option, restart. Also surfaces a "Review macOS conflicts" action that opens a
+ * grouped, explained view of the keymap's overlaps with macOS system shortcuts
+ * (a friendlier take on IDEA's bare "N conflicts with macOS" count).
  */
 public final class NationalLayoutCheck implements KeymapManagerListener, AppLifecycleListener {
   private static final String KEYMAP_NAME = "MacBook Pro DE";
@@ -50,21 +53,32 @@ public final class NationalLayoutCheck implements KeymapManagerListener, AppLife
     if (keymap == null || !SystemInfoRt.isMac || !KEYMAP_NAME.equals(keymap.getName())) {
       return;
     }
-    if (NationalKeyboardSupport.getInstance().getEnabled()) {
-      return;
-    }
     if (!NOTIFIED.compareAndSet(false, true)) {
       return;
     }
+    boolean layoutOff = !NationalKeyboardSupport.getInstance().getEnabled();
     Notification notification = NotificationGroupManager.getInstance()
       .getNotificationGroup(NOTIFICATION_GROUP)
       .createNotification(
-        "MacBook Pro DE keymap needs national keyboard layout support",
-        "This keymap binds keys of the German layout (Ä Ö Ü ß + # <), which only work while " +
-        "\"Use national keyboard layouts for shortcuts\" is enabled (Settings → Keymap). " +
-        "Enabling requires an IDE restart.",
-        NotificationType.WARNING);
-    notification.addAction(NotificationAction.createSimple("Enable and restart", () -> enableAndRestart(notification)));
+        layoutOff
+          ? "MacBook Pro DE keymap needs national keyboard layout support"
+          : "MacBook Pro DE keymap activated",
+        layoutOff
+          ? "This keymap binds keys of the German layout (Ä Ö Ü ß + # <), which only work while " +
+            "\"Use national keyboard layouts for shortcuts\" is enabled (Settings → Keymap). " +
+            "Enabling requires an IDE restart."
+          : "Some shortcuts overlap macOS system shortcuts. Review which are intentional " +
+            "and which may need a change.",
+        layoutOff ? NotificationType.WARNING : NotificationType.INFORMATION);
+    if (layoutOff) {
+      notification.addAction(NotificationAction.createSimple("Enable and restart", () -> enableAndRestart(notification)));
+    }
+    notification.addAction(new NotificationAction("Review macOS conflicts") {
+      @Override
+      public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification n) {
+        new ConflictReportDialog(e.getProject()).show();
+      }
+    });
     notification.addAction(NotificationAction.createSimple("Dismiss", notification::expire));
     notification.notify(null);
   }

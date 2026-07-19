@@ -8,7 +8,7 @@ PyCharm, CLion, …) on macOS.
 The plugin ZIP:
 
 ```
-keymap-plugin/build/distributions/CIVA-Keymap-1.1.0.zip
+keymap-plugin/build/distributions/CIVA-Keymap-1.2.0.zip
 ```
 
 If it is missing, rebuild it:
@@ -28,7 +28,7 @@ own plugins):
 1. Open **Settings** (`⌘ ,`).
 2. Go to **Plugins**.
 3. Click the **⚙ gear icon** (top right of the plugin list) → **Install Plugin from Disk…**
-4. Select `CIVA-Keymap-1.1.0.zip` → **OK**.
+4. Select `CIVA-Keymap-1.2.0.zip` → **OK**.
 5. Click **Restart IDE** when prompted.
 
 > Installing the plugin does **not** switch your active keymap — that is Part 2.
@@ -46,6 +46,12 @@ Verify: the dropdown shows *MacBook Pro DE*, and e.g. `⌘⇧G` triggers *Find P
 > **Settings → Keymap → "Use national keyboard layouts for shortcuts"** is enabled.
 > It is enabled by default on macOS — leave it on. If it is off when you select the
 > keymap, the plugin (1.1.0+) shows a warning with an **Enable and restart** button.
+
+> **macOS shortcut conflicts.** IDEA may report that a few shortcuts also belong to
+> macOS. Most are intentional (window cycling, emoji picker, standard app shortcuts).
+> When the keymap is activated, the plugin (1.2.0+) offers a **Review macOS conflicts**
+> action that opens a grouped explanation of which overlaps are by design and which
+> depend on your macOS settings.
 
 ---
 
