@@ -194,6 +194,67 @@ not capture typing in the editor. With `<` carrying the project-window pair, all
 | `ExpandExpandableComponent`   | `control ADD`; `control EQUALS` | `shift ENTER`                  |
 | `FileChooser.NewFolder`       | `alt INSERT`                    | `control N`                    |
 | `Forward`                     | `meta CLOSE_BRACKET`            | `meta alt RIGHT`               |
-| `NextTab`                     | `meta shift CLOSE_BRACKET`      | `control RIGHT`                |
+| `NextTab`                     | `meta shift CLOSE_BRACKET`      | `control RIGHT` ³              |
 | `PasteMultiple`               | `control shift INSERT`          | `control shift V`              |
-| `PreviousTab`                 | `meta shift OPEN_BRACKET`       | `control LEFT`                 |
+| `PreviousTab`                 | `meta shift OPEN_BRACKET`       | `control LEFT` ³               |
+
+³ The surviving `⌃←`/`⌃→` bindings are shadowed by macOS Spaces switching — rebound in Appendix C.
+
+## Appendix C — Conflicts with macOS system shortcuts
+
+macOS grabs some key combos before IDEA ever sees them (breaking the IDEA binding), and some IDEA bindings sit on combos
+macOS functions need. All macOS bindings can be inspected three ways:
+
+1. **System Settings → Keyboard → Keyboard Shortcuts** (interactive, per category, shows enabled state).
+2. **Machine-readable ground truth**:
+   `plutil -convert json -o - ~/Library/Preferences/com.apple.symbolichotkeys.plist` — every system shortcut with
+   keycode, modifier mask, and enabled flag.
+3. Apple's reference list: https://support.apple.com/HT201236
+
+**Snapshot of this machine (2026-07-19), all 62 symbolic hotkeys decoded against the German layout and compared with all
+447 keymap bindings plus the Appendix A rebinds:** F1–F12 act as standard function keys (`fnState=1`); dictation is not
+on double-⌃; input-source switching (`⌃Space`/`⌃⌥Space`) is **disabled**; Mission Control / App windows / Show Desktop
+are remapped to `⌃⌥⌘F9`–`F11` and desktop switching to `⌃⌥⌘1`–`3` — none of which the keymap uses.
+
+### Conflicts found → rebinds (11 actions)
+
+Two rules: **`⌃Fn` → `⌘Fn`** (the macOS accessibility hotkeys own the `⌃F`-row; only `⌘F3` was already taken, and it is
+not needed), and **previous/next pairs → `Ö`/`Ä`** (`Ö` = previous/left, `Ä` = next/right — extending the Appendix A
+bracket rule) in three modifier tiers.
+
+| Action                 | Old binding           | macOS function (enabled here)  | Rebind (`first-keystroke`) | Keys |
+|------------------------|-----------------------|--------------------------------|----------------------------|------|
+| `ShowErrorDescription` | `control F1`          | Turn keyboard access on/off    | `meta F1`                  | ⌘F1  |
+| `Stop`                 | `control F2`          | Move focus to menu bar         | `meta F2`                  | ⌘F2  |
+| `ChangeSignature`      | `control F6`          | Move focus to floating window  | `meta F6`                  | ⌘F6  |
+| `FindUsagesInFile`     | `control F7`          | Change the way Tab moves focus | `meta F7`                  | ⌘F7  |
+| `ToggleLineBreakpoint` | `control F8`          | Move focus to status menus     | `meta F8`                  | ⌘F8  |
+| `PreviousTab`          | `control LEFT`        | Spaces: move left a space      | `meta shift #10000d6`      | ⌘⇧Ö  |
+| `NextTab`              | `control RIGHT`       | Spaces: move right a space     | `meta shift #10000c4`      | ⌘⇧Ä  |
+| `PreviousEditorTab`    | `control shift LEFT`  | Spaces: move left (⇧ variant)  | `control #10000d6`         | ⌃Ö   |
+| `NextEditorTab`        | `control shift RIGHT` | Spaces: move right (⇧ variant) | `control #10000c4`         | ⌃Ä   |
+| `Diff.PrevChange`      | `control shift LEFT`  | Spaces: move left (⇧ variant)  | `control shift #10000d6`   | ⌃⇧Ö  |
+| `Diff.NextChange`      | `control shift RIGHT` | Spaces: move right (⇧ variant) | `control shift #10000c4`   | ⌃⇧Ä  |
+
+`PreviousTab`/`NextTab` thereby land exactly where the Appendix A bracket rule would have put their dead
+`meta shift OPEN_/CLOSE_BRACKET` bindings.
+
+### Aligned — same function on both sides, deliberately kept
+
+| Binding                 | IDEA action                                                                             | macOS function                                                                                                            |
+|-------------------------|-----------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------|
+| ⌃⌘Space                 | `EmojiAndSymbols`                                                                       | Emoji & Symbols viewer — identical by design                                                                              |
+| ⌘< / ⌘⇧<                | `NextProjectWindow` / `PreviousProjectWindow`                                           | Cycle app windows forward/backward — IDEA implements the same concept for project windows, so **Appendix A needs no fix** |
+| ⌘M / ⌘W / ⌘Q / ⌘, / ⌘⌃F | `MinimizeCurrentWindow` / `CloseContent` / `Exit` / `ShowSettings` / `ToggleFullScreen` | Standard macOS app conventions                                                                                            |
+
+### Watchlist for other machines (stock macOS defaults — relevant for plugin users)
+
+These do **not** conflict on this machine because of local settings, but will on a stock macOS install:
+
+| Stock macOS default                                                             | Affected IDEA binding                                                                                        | Resolution                                                                                                                                                 |
+|---------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `⌃Space` / `⌃⌥Space` input-source switching (auto-enabled with >1 input source) | `CodeCompletion` ⌃Space, `ChangesView.SetDefault` ⌃Space, `ClassNameCompletion` ⌃⌥Space                      | Keep the IDEA bindings — disable/remap the macOS shortcut (System Settings → Keyboard → Keyboard Shortcuts → Input Sources); JetBrains' own recommendation |
+| `⌃1`…`⌃9` desktop switching (auto-enabled per additional Space)                 | `GotoBookmark1`–`9` ⌃n, `FileChooser.GotoHome/Project/Module` ⌃1/2/3, `DuplicatesForm.SendToLeft/Right` ⌃1/2 | Remap desktop switching (here: `⌃⌥⌘n`) or accept menu access to bookmarks                                                                                  |
+| `⌥⌘8` accessibility zoom toggle (zoom in/out land on `⌥⌘´`/`⌥⌘ß` on German)     | `ActivateUnitTestsToolWindow` ⌘⌥8                                                                            | Zoom is off by default and off here                                                                                                                        |
+| Dictation on double-⌃ (optional setting)                                        | `RunAnything` double-⌃ gesture                                                                               | Keep dictation on 🌐 (fn) or off                                                                                                                           |
+| `⌃↑` / `⌃↓` Mission Control / App windows (stock keys)                          | — nothing bound in this keymap                                                                               | No action needed                                                                                                                                           |
