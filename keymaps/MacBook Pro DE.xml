@@ -82,7 +82,7 @@
     <keyboard-shortcut first-keystroke="control alt H"/>
   </action>
   <action id="ChangeSignature">
-    <keyboard-shortcut first-keystroke="control F6"/>
+    <keyboard-shortcut first-keystroke="meta F6"/>
   </action>
   <action id="ChangesView.GroupBy.Directory">
     <keyboard-shortcut first-keystroke="control P"/>
@@ -167,19 +167,13 @@
     <keyboard-shortcut first-keystroke="control PERIOD"/>
   </action>
   <action id="CollapseTreeNode">
-    <keyboard-shortcut first-keystroke="SUBTRACT"/>
+    <keyboard-shortcut first-keystroke="MINUS"/>
   </action>
   <action id="CommentByBlockComment">
-    <keyboard-shortcut first-keystroke="meta alt SLASH"/>
-    <keyboard-shortcut first-keystroke="meta alt DIVIDE"/>
-    <keyboard-shortcut first-keystroke="control shift SLASH"/>
-    <keyboard-shortcut first-keystroke="control shift DIVIDE"/>
-    <keyboard-shortcut first-keystroke="meta shift SLASH"/>
-    <keyboard-shortcut first-keystroke="meta shift DIVIDE"/>
+    <keyboard-shortcut first-keystroke="meta alt NUMBER_SIGN"/>
   </action>
   <action id="CommentByLineComment">
-    <keyboard-shortcut first-keystroke="control SLASH"/>
-    <keyboard-shortcut first-keystroke="control DIVIDE"/>
+    <keyboard-shortcut first-keystroke="control NUMBER_SIGN"/>
   </action>
   <action id="Compare.SameVersion">
     <keyboard-shortcut first-keystroke="control D"/>
@@ -238,10 +232,10 @@
   </action>
   <action id="Diff.FocusOppositePaneAndScroll"/>
   <action id="Diff.NextChange">
-    <keyboard-shortcut first-keystroke="control shift RIGHT"/>
+    <keyboard-shortcut first-keystroke="control shift #10000c4"/>
   </action>
   <action id="Diff.PrevChange">
-    <keyboard-shortcut first-keystroke="control shift LEFT"/>
+    <keyboard-shortcut first-keystroke="control shift #10000d6"/>
   </action>
   <action id="Diff.ShowDiff">
     <keyboard-shortcut first-keystroke="control D"/>
@@ -290,16 +284,16 @@
     <keyboard-shortcut first-keystroke="TAB"/>
   </action>
   <action id="EditorCodeBlockEnd">
-    <keyboard-shortcut first-keystroke="meta alt CLOSE_BRACKET"/>
+    <keyboard-shortcut first-keystroke="meta alt #10000c4"/>
   </action>
   <action id="EditorCodeBlockEndWithSelection">
-    <keyboard-shortcut first-keystroke="meta alt shift CLOSE_BRACKET"/>
+    <keyboard-shortcut first-keystroke="meta alt shift #10000c4"/>
   </action>
   <action id="EditorCodeBlockStart">
-    <keyboard-shortcut first-keystroke="meta alt OPEN_BRACKET"/>
+    <keyboard-shortcut first-keystroke="meta alt #10000d6"/>
   </action>
   <action id="EditorCodeBlockStartWithSelection">
-    <keyboard-shortcut first-keystroke="meta alt shift OPEN_BRACKET"/>
+    <keyboard-shortcut first-keystroke="meta alt shift #10000d6"/>
   </action>
   <action id="EditorCompleteStatement">
     <keyboard-shortcut first-keystroke="control shift ENTER"/>
@@ -486,7 +480,7 @@
     <keyboard-shortcut first-keystroke="shift meta MULTIPLY"/>
   </action>
   <action id="EditorToggleInsertState">
-    <keyboard-shortcut first-keystroke="INSERT"/>
+    <keyboard-shortcut first-keystroke="meta #10000fc"/>
   </action>
   <action id="EditorUnindentSelection">
     <keyboard-shortcut first-keystroke="shift TAB"/>
@@ -518,32 +512,25 @@
     <keyboard-shortcut first-keystroke="meta Q"/>
   </action>
   <action id="ExpandAll">
-    <keyboard-shortcut first-keystroke="control ADD"/>
-    <keyboard-shortcut first-keystroke="control EQUALS"/>
+    <keyboard-shortcut first-keystroke="control PLUS"/>
   </action>
   <action id="ExpandAllRegions">
-    <keyboard-shortcut first-keystroke="control shift ADD"/>
-    <keyboard-shortcut first-keystroke="control shift EQUALS"/>
+    <keyboard-shortcut first-keystroke="control shift PLUS"/>
   </action>
   <action id="ExpandAllToLevel1">
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="1"/>
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="NUMPAD1"/>
+    <keyboard-shortcut first-keystroke="control shift #10000fc" second-keystroke="1"/>
   </action>
   <action id="ExpandAllToLevel2">
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="2"/>
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="NUMPAD2"/>
+    <keyboard-shortcut first-keystroke="control shift #10000fc" second-keystroke="2"/>
   </action>
   <action id="ExpandAllToLevel3">
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="3"/>
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="NUMPAD3"/>
+    <keyboard-shortcut first-keystroke="control shift #10000fc" second-keystroke="3"/>
   </action>
   <action id="ExpandAllToLevel4">
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="4"/>
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="NUMPAD4"/>
+    <keyboard-shortcut first-keystroke="control shift #10000fc" second-keystroke="4"/>
   </action>
   <action id="ExpandAllToLevel5">
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="5"/>
-    <keyboard-shortcut first-keystroke="meta alt MULTIPLY" second-keystroke="NUMPAD5"/>
+    <keyboard-shortcut first-keystroke="control shift #10000fc" second-keystroke="5"/>
   </action>
   <action id="ExpandExpandableComponent">
     <keyboard-shortcut first-keystroke="shift ENTER"/>
@@ -554,35 +541,28 @@
     <keyboard-shortcut first-keystroke="TAB"/>
   </action>
   <action id="ExpandRegion">
-    <keyboard-shortcut first-keystroke="control ADD"/>
-    <keyboard-shortcut first-keystroke="control EQUALS"/>
+    <keyboard-shortcut first-keystroke="control PLUS"/>
   </action>
   <action id="ExpandRegionRecursively">
-    <keyboard-shortcut first-keystroke="control alt ADD"/>
-    <keyboard-shortcut first-keystroke="control alt EQUALS"/>
+    <keyboard-shortcut first-keystroke="control alt PLUS"/>
   </action>
   <action id="ExpandToLevel1">
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="1"/>
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="NUMPAD1"/>
+    <keyboard-shortcut first-keystroke="control #10000fc" second-keystroke="1"/>
   </action>
   <action id="ExpandToLevel2">
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="2"/>
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="NUMPAD2"/>
+    <keyboard-shortcut first-keystroke="control #10000fc" second-keystroke="2"/>
   </action>
   <action id="ExpandToLevel3">
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="3"/>
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="NUMPAD3"/>
+    <keyboard-shortcut first-keystroke="control #10000fc" second-keystroke="3"/>
   </action>
   <action id="ExpandToLevel4">
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="4"/>
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="NUMPAD4"/>
+    <keyboard-shortcut first-keystroke="control #10000fc" second-keystroke="4"/>
   </action>
   <action id="ExpandToLevel5">
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="5"/>
-    <keyboard-shortcut first-keystroke="control MULTIPLY" second-keystroke="NUMPAD5"/>
+    <keyboard-shortcut first-keystroke="control #10000fc" second-keystroke="5"/>
   </action>
   <action id="ExpandTreeNode">
-    <keyboard-shortcut first-keystroke="ADD"/>
+    <keyboard-shortcut first-keystroke="PLUS"/>
   </action>
   <action id="ExportToTextFile">
     <keyboard-shortcut first-keystroke="control O"/>
@@ -612,7 +592,7 @@
     <keyboard-shortcut first-keystroke="control 2"/>
   </action>
   <action id="FileChooser.GoToRoot">
-    <keyboard-shortcut first-keystroke="meta SLASH"/>
+    <keyboard-shortcut first-keystroke="meta NUMBER_SIGN"/>
   </action>
   <action id="FileChooser.NewFolder">
     <keyboard-shortcut first-keystroke="alt INSERT"/>
@@ -641,7 +621,7 @@
     <keyboard-shortcut first-keystroke="alt F7"/>
   </action>
   <action id="FindUsagesInFile">
-    <keyboard-shortcut first-keystroke="control F7"/>
+    <keyboard-shortcut first-keystroke="meta F7"/>
   </action>
   <action id="FindWordAtCaret"/>
   <action id="FocusEditor">
@@ -665,7 +645,7 @@
     <mouse-shortcut keystroke="button5"/>
   </action>
   <action id="FullyExpandTreeNode">
-    <keyboard-shortcut first-keystroke="MULTIPLY"/>
+    <keyboard-shortcut first-keystroke="shift PLUS"/>
   </action>
   <action id="Generate">
     <keyboard-shortcut first-keystroke="meta N"/>
@@ -781,10 +761,10 @@
     <keyboard-shortcut first-keystroke="control shift F7"/>
   </action>
   <action id="HippieBackwardCompletion">
-    <keyboard-shortcut first-keystroke="alt shift SLASH"/>
+    <keyboard-shortcut first-keystroke="alt shift NUMBER_SIGN"/>
   </action>
   <action id="HippieCompletion">
-    <keyboard-shortcut first-keystroke="alt SLASH"/>
+    <keyboard-shortcut first-keystroke="alt NUMBER_SIGN"/>
   </action>
   <action id="ImplementMethods">
     <keyboard-shortcut first-keystroke="control I"/>
@@ -827,7 +807,7 @@
   </action>
   <action id="MainMenuButton.ShowMenu"/>
   <action id="MaximizeToolWindow">
-    <keyboard-shortcut first-keystroke="control shift QUOTE"/>
+    <keyboard-shortcut first-keystroke="control shift NUMBER_SIGN"/>
   </action>
   <action id="MethodDown">
     <keyboard-shortcut first-keystroke="ctrl shift DOWN"/>
@@ -882,7 +862,7 @@
     <keyboard-shortcut first-keystroke="F7"/>
   </action>
   <action id="NextEditorTab">
-    <keyboard-shortcut first-keystroke="control shift RIGHT"/>
+    <keyboard-shortcut first-keystroke="control #10000c4"/>
   </action>
   <action id="NextOccurence">
     <keyboard-shortcut first-keystroke="control alt DOWN"/>
@@ -891,21 +871,20 @@
     <keyboard-shortcut first-keystroke="TAB"/>
   </action>
   <action id="NextProjectWindow">
-    <keyboard-shortcut first-keystroke="meta alt BACK_QUOTE"/>
+    <keyboard-shortcut first-keystroke="meta LESS"/>
   </action>
   <action id="NextSplitter">
     <keyboard-shortcut first-keystroke="alt TAB"/>
   </action>
   <action id="NextTab">
-    <keyboard-shortcut first-keystroke="meta shift CLOSE_BRACKET"/>
-    <keyboard-shortcut first-keystroke="control RIGHT"/>
+    <keyboard-shortcut first-keystroke="meta shift #10000c4"/>
   </action>
   <action id="NextTemplateVariable">
     <keyboard-shortcut first-keystroke="TAB"/>
     <keyboard-shortcut first-keystroke="ENTER"/>
   </action>
   <action id="NextWindow">
-    <keyboard-shortcut first-keystroke="meta BACK_QUOTE"/>
+    <keyboard-shortcut first-keystroke="meta #10000df"/>
   </action>
   <action id="OpenInRightSplit">
     <keyboard-shortcut first-keystroke="shift ENTER"/>
@@ -931,23 +910,22 @@
     <keyboard-shortcut first-keystroke="shift F7"/>
   </action>
   <action id="PreviousEditorTab">
-    <keyboard-shortcut first-keystroke="control shift LEFT"/>
+    <keyboard-shortcut first-keystroke="control #10000d6"/>
   </action>
   <action id="PreviousOccurence">
     <keyboard-shortcut first-keystroke="control alt UP"/>
   </action>
   <action id="PreviousProjectWindow">
-    <keyboard-shortcut first-keystroke="meta shift alt BACK_QUOTE"/>
+    <keyboard-shortcut first-keystroke="meta shift LESS"/>
   </action>
   <action id="PreviousTab">
-    <keyboard-shortcut first-keystroke="meta shift OPEN_BRACKET"/>
-    <keyboard-shortcut first-keystroke="control LEFT"/>
+    <keyboard-shortcut first-keystroke="meta shift #10000d6"/>
   </action>
   <action id="PreviousTemplateVariable">
     <keyboard-shortcut first-keystroke="shift TAB"/>
   </action>
   <action id="PreviousWindow">
-    <keyboard-shortcut first-keystroke="meta shift BACK_QUOTE"/>
+    <keyboard-shortcut first-keystroke="meta shift #10000df"/>
   </action>
   <action id="PrevParameter">
     <keyboard-shortcut first-keystroke="shift TAB"/>
@@ -959,7 +937,7 @@
     <keyboard-shortcut first-keystroke="control alt ENTER"/>
   </action>
   <action id="QuickChangeScheme">
-    <keyboard-shortcut first-keystroke="control BACK_QUOTE"/>
+    <keyboard-shortcut first-keystroke="control #10000df"/>
   </action>
   <action id="QuickEvaluateExpression">
     <keyboard-shortcut first-keystroke="control alt F8"/>
@@ -1109,7 +1087,7 @@
     <keyboard-shortcut first-keystroke="control shift DOWN"/>
   </action>
   <action id="ShowErrorDescription">
-    <keyboard-shortcut first-keystroke="control F1"/>
+    <keyboard-shortcut first-keystroke="meta F1"/>
   </action>
   <action id="ShowExecutionPoint">
     <keyboard-shortcut first-keystroke="alt F10"/>
@@ -1129,7 +1107,7 @@
   </action>
   <action id="ShowPopupMenu"/>
   <action id="ShowProjectStructureSettings">
-    <keyboard-shortcut first-keystroke="meta SEMICOLON"/>
+    <keyboard-shortcut first-keystroke="meta shift COMMA"/>
   </action>
   <action id="ShowReformatFileDialog">
     <keyboard-shortcut first-keystroke="control shift alt L"/>
@@ -1183,7 +1161,7 @@
     <keyboard-shortcut first-keystroke="F8"/>
   </action>
   <action id="Stop">
-    <keyboard-shortcut first-keystroke="control F2"/>
+    <keyboard-shortcut first-keystroke="meta F2"/>
   </action>
   <action id="StopBackgroundProcesses">
     <keyboard-shortcut first-keystroke="control shift F2"/>
@@ -1273,7 +1251,7 @@
     <keyboard-shortcut first-keystroke="meta control F"/>
   </action>
   <action id="ToggleLineBreakpoint">
-    <keyboard-shortcut first-keystroke="control F8"/>
+    <keyboard-shortcut first-keystroke="meta F8"/>
   </action>
   <action id="TogglePopupHints"/>
   <action id="ToggleReadOnlyAttribute"/>
@@ -1363,16 +1341,16 @@
     <keyboard-shortcut first-keystroke="shift F4"/>
   </action>
   <action id="XDebugger.NewWatch">
-    <keyboard-shortcut first-keystroke="INSERT"/>
+    <keyboard-shortcut first-keystroke="meta PLUS"/>
   </action>
   <action id="XDebugger.SetValue">
     <keyboard-shortcut first-keystroke="F2"/>
   </action>
   <action id="ZoomCurrentWindow">
-    <keyboard-shortcut first-keystroke="meta control EQUALS"/>
+    <keyboard-shortcut first-keystroke="meta control PLUS"/>
   </action>
   <action id="ZoomInIdeAction">
-    <keyboard-shortcut first-keystroke="control alt EQUALS"/>
+    <keyboard-shortcut first-keystroke="control alt PLUS"/>
   </action>
   <action id="ZoomOutIdeAction">
     <keyboard-shortcut first-keystroke="control alt MINUS"/>

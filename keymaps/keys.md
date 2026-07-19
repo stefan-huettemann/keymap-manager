@@ -1,7 +1,8 @@
 # Keys used in `MacBook Pro DE.xml`
 
 Source: `keymaps/MacBook Pro DE.xml` (447 actions). Target hardware: MacBook Pro with **German (T1 / ISO) layout**, no
-numpad.
+numpad. The audit tables below describe the *original* merged keymap; the rebinds declared in Appendices A and C
+**have been applied** to the keymap since (2026-07-19).
 
 **Why keys can be "unreachable":** IntelliJ shortcuts address *physical keys* (AWT virtual key codes), not the
 characters they produce. `meta SLASH` means the key
@@ -71,8 +72,7 @@ unused).
 ## Bindable German keys — free shortcut real estate
 
 The German T1 layout has physical keys that stock US-ANSI keymaps never bind — some don't exist on a US keyboard at all.
-**None of them are used anywhere in
-`MacBook Pro DE.xml`**, making them the prime candidates for rebinding the Appendix A actions below.
+None of them were used in the original merged keymap; **all seven are now carrying the Appendix A and C rebinds**.
 
 | Key       | Token in keymap XML                 | Key code                 | Status                                                                  |
 |-----------|-------------------------------------|--------------------------|-------------------------------------------------------------------------|
@@ -119,7 +119,7 @@ Notes:
 Every keyboard shortcut of these actions uses a ❌/⚠️ key, so on a German MacBook Pro the action is only reachable via
 menus or `Find Action`.
 
-**Rebind declaration** *(proposal — `MacBook Pro DE.xml` not yet changed)*. Each action gets exactly **one** new
+**Rebind declaration** *(applied to `MacBook Pro DE.xml` 2026-07-19)*. Each action gets exactly **one** new
 binding, replacing all dead ones. No dead keys (`´` `^`) and no numpad keys are used. The mapping follows per-key
 substitution rules, keeping the original modifiers wherever possible:
 
