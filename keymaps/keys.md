@@ -6,7 +6,8 @@ numpad.
 **Why keys can be "unreachable":** IntelliJ shortcuts address *physical keys* (AWT virtual key codes), not the
 characters they produce. `meta SLASH` means the key
 `VK_SLASH` — which does not exist on a German keyboard, where `/` is only typed as
-`⇧7`. Pressing `⌘⇧7` delivers `meta shift 7`, never `meta SLASH`, so the shortcut can never fire. (Deeper background: `handover-unreachable-keys.md`, a local research doc not tracked in this repo.)
+`⇧7`. Pressing `⌘⇧7` delivers `meta shift 7`, never `meta SLASH`, so the shortcut can never fire. (Deeper background:
+`handover-unreachable-keys.md`, a local research doc not tracked in this repo.)
 
 Legend:
 
@@ -116,39 +117,66 @@ Notes:
 ## Appendix A — Actions with NO reachable binding (37)
 
 Every keyboard shortcut of these actions uses a ❌/⚠️ key, so on a German MacBook Pro the action is only reachable via
-menus or `Find Action`. These are the rebinding work list.
+menus or `Find Action`.
 
-| Action                              | Dead binding(s)                                                                                                             |
-|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `CollapseTreeNode`                  | `SUBTRACT`                                                                                                                  |
-| `CommentByBlockComment`             | `meta alt SLASH`; `meta alt DIVIDE`; `control shift SLASH`; `control shift DIVIDE`; `meta shift SLASH`; `meta shift DIVIDE` |
-| `CommentByLineComment`              | `control SLASH`; `control DIVIDE`                                                                                           |
-| `EditorCodeBlockEnd`                | `meta alt CLOSE_BRACKET`                                                                                                    |
-| `EditorCodeBlockEndWithSelection`   | `meta alt shift CLOSE_BRACKET`                                                                                              |
-| `EditorCodeBlockStart`              | `meta alt OPEN_BRACKET`                                                                                                     |
-| `EditorCodeBlockStartWithSelection` | `meta alt shift OPEN_BRACKET`                                                                                               |
-| `EditorToggleInsertState`           | `INSERT`                                                                                                                    |
-| `ExpandAll`                         | `control ADD`; `control EQUALS`                                                                                             |
-| `ExpandAllRegions`                  | `control shift ADD`; `control shift EQUALS`                                                                                 |
-| `ExpandAllToLevel1`…`5`             | `meta alt MULTIPLY` + digit/numpad digit                                                                                    |
-| `ExpandRegion`                      | `control ADD`; `control EQUALS`                                                                                             |
-| `ExpandRegionRecursively`           | `control alt ADD`; `control alt EQUALS`                                                                                     |
-| `ExpandToLevel1`…`5`                | `control MULTIPLY` + digit/numpad digit                                                                                     |
-| `ExpandTreeNode`                    | `ADD`                                                                                                                       |
-| `FileChooser.GoToRoot`              | `meta SLASH`                                                                                                                |
-| `FullyExpandTreeNode`               | `MULTIPLY`                                                                                                                  |
-| `HippieBackwardCompletion`          | `alt shift SLASH`                                                                                                           |
-| `HippieCompletion`                  | `alt SLASH`                                                                                                                 |
-| `MaximizeToolWindow`                | `control shift QUOTE`                                                                                                       |
-| `NextProjectWindow`                 | `meta alt BACK_QUOTE`                                                                                                       |
-| `NextWindow`                        | `meta BACK_QUOTE`                                                                                                           |
-| `PreviousProjectWindow`             | `meta shift alt BACK_QUOTE`                                                                                                 |
-| `PreviousWindow`                    | `meta shift BACK_QUOTE`                                                                                                     |
-| `QuickChangeScheme`                 | `control BACK_QUOTE`                                                                                                        |
-| `ShowProjectStructureSettings`      | `meta SEMICOLON`                                                                                                            |
-| `XDebugger.NewWatch`                | `INSERT`                                                                                                                    |
-| `ZoomCurrentWindow`                 | `meta control EQUALS`                                                                                                       |
-| `ZoomInIdeAction`                   | `control alt EQUALS`                                                                                                        |
+**Rebind declaration** *(proposal — `MacBook Pro DE.xml` not yet changed)*. Each action gets exactly **one** new
+binding, replacing all dead ones. No dead keys (`´` `^`) and no numpad keys are used. The mapping follows per-key
+substitution rules, keeping the original modifiers wherever possible:
+
+| Dead key                           | Replacement                         | Rationale                                                                                                         |
+|------------------------------------|-------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `/` (`SLASH`, `DIVIDE`)            | `#` (`number_sign`)                 | `#` is *the* comment character; dedicated German key right of `Ä`                                                 |
+| `=` + numpad `+` (`EQUALS`, `ADD`) | `+` (`plus`)                        | dedicated German key right of `Ü`; completes the pair with the existing `⌃-` collapse bindings                    |
+| numpad `-` (`SUBTRACT`)            | `-` (`minus`)                       | real key on German layout                                                                                         |
+| numpad `*` (`MULTIPLY`)            | `⇧+` (`shift plus`)                 | `⇧+` types `*`                                                                                                    |
+| `[` / `]` (`OPEN_/CLOSE_BRACKET`)  | `Ö` / `Ä` (`#10000d6` / `#10000c4`) | adjacent key pair: left key = start, right key = end                                                              |
+| `` ` `` (`BACK_QUOTE`)             | `ß` (`#10000df`) / `<` (`less`)     | window cycling: `ß` = editor windows (+ scheme popup), `<` = project windows — same `⌘`/`⌘⇧` pattern on both keys |
+| fold-to-level prefix strokes       | `Ü` (`#10000fc`)                    | `⌃Ü` = expand to level, `⌃⇧Ü` = expand all to level (`⇧` = "all", same rule as `⌃+`/`⌃⇧+`)                        |
+| `'` (`QUOTE`)                      | `⇧#`                                | `⇧#` types `'`                                                                                                    |
+| `;` (`SEMICOLON`)                  | `⇧,` (`shift comma`)                | `⇧,` types `;` — keeps the pairing with `ShowSettings` on `⌘,`                                                    |
+| `INSERT`                           | per action                          | `⌘Ü` = toggle **Ü**berschreiben (overwrite); `⌘+` = add watch                                                     |
+
+| Action                              | Dead binding(s)                             | Rebind (`first-keystroke`)         | Keys         |
+|-------------------------------------|---------------------------------------------|------------------------------------|--------------|
+| `CollapseTreeNode`                  | `SUBTRACT`                                  | `minus`                            | `-`          |
+| `CommentByBlockComment`             | `meta alt SLASH` *(+ 5 variants)*           | `meta alt number_sign`             | ⌘⌥#          |
+| `CommentByLineComment`              | `control SLASH`; `control DIVIDE`           | `control number_sign`              | ⌃#           |
+| `EditorCodeBlockEnd`                | `meta alt CLOSE_BRACKET`                    | `meta alt #10000c4`                | ⌘⌥Ä          |
+| `EditorCodeBlockEndWithSelection`   | `meta alt shift CLOSE_BRACKET`              | `meta alt shift #10000c4`          | ⌘⌥⇧Ä         |
+| `EditorCodeBlockStart`              | `meta alt OPEN_BRACKET`                     | `meta alt #10000d6`                | ⌘⌥Ö          |
+| `EditorCodeBlockStartWithSelection` | `meta alt shift OPEN_BRACKET`               | `meta alt shift #10000d6`          | ⌘⌥⇧Ö         |
+| `EditorToggleInsertState`           | `INSERT`                                    | `meta #10000fc`                    | ⌘Ü           |
+| `ExpandAll`                         | `control ADD`; `control EQUALS`             | `control plus`                     | ⌃+ ¹         |
+| `ExpandAllRegions`                  | `control shift ADD`; `control shift EQUALS` | `control shift plus`               | ⌃⇧+          |
+| `ExpandAllToLevel1`…`5`             | `meta alt MULTIPLY` + digit                 | `control shift #10000fc` + `1`…`5` | ⌃⇧Ü, digit   |
+| `ExpandRegion`                      | `control ADD`; `control EQUALS`             | `control plus`                     | ⌃+ ¹         |
+| `ExpandRegionRecursively`           | `control alt ADD`; `control alt EQUALS`     | `control alt plus`                 | ⌃⌥+ ²        |
+| `ExpandToLevel1`…`5`                | `control MULTIPLY` + digit                  | `control #10000fc` + `1`…`5`       | ⌃Ü, digit    |
+| `ExpandTreeNode`                    | `ADD`                                       | `plus`                             | `+`          |
+| `FileChooser.GoToRoot`              | `meta SLASH`                                | `meta number_sign`                 | ⌘#           |
+| `FullyExpandTreeNode`               | `MULTIPLY`                                  | `shift plus`                       | ⇧+ (= `*`)   |
+| `HippieBackwardCompletion`          | `alt shift SLASH`                           | `alt shift number_sign`            | ⌥⇧#          |
+| `HippieCompletion`                  | `alt SLASH`                                 | `alt number_sign`                  | ⌥#           |
+| `MaximizeToolWindow`                | `control shift QUOTE`                       | `control shift number_sign`        | ⌃⇧# (= ⌃`'`) |
+| `NextProjectWindow`                 | `meta alt BACK_QUOTE`                       | `meta less`                        | ⌘<           |
+| `NextWindow`                        | `meta BACK_QUOTE`                           | `meta #10000df`                    | ⌘ß           |
+| `PreviousProjectWindow`             | `meta shift alt BACK_QUOTE`                 | `meta shift less`                  | ⌘⇧<          |
+| `PreviousWindow`                    | `meta shift BACK_QUOTE`                     | `meta shift #10000df`              | ⌘⇧ß          |
+| `QuickChangeScheme`                 | `control BACK_QUOTE`                        | `control #10000df`                 | ⌃ß           |
+| `ShowProjectStructureSettings`      | `meta SEMICOLON`                            | `meta shift comma`                 | ⌘⇧, (= ⌘`;`) |
+| `XDebugger.NewWatch`                | `INSERT`                                    | `meta plus`                        | ⌘+           |
+| `ZoomCurrentWindow`                 | `meta control EQUALS`                       | `meta control plus`                | ⌘⌃+          |
+| `ZoomInIdeAction`                   | `control alt EQUALS`                        | `control alt plus`                 | ⌃⌥+ ²        |
+
+¹ `ExpandAll` and `ExpandRegion` share `⌃+` deliberately — their original bindings were identical too; the IDE separates
+them by context (tree vs. editor). ² `ExpandRegionRecursively` and `ZoomInIdeAction` shared `⌃⌥=` in the original
+keymap; the shared rebind `⌃⌥+`
+preserves that — and `ZoomInIdeAction` `⌃⌥+` now mirrors `ZoomOutIdeAction` `⌃⌥-`.
+
+Collision audit: every rebind uses a key that was previously bound to nothing in the keymap (`plus`, `number_sign`,
+`less`, the `#hex` keys, bare `minus`, `meta shift comma` — all verified unused), so no existing binding is shadowed.
+The bare `+` / `-` / `⇧+` bindings live in tree contexts only, exactly like the bare numpad keys they replace — they do
+not capture typing in the editor. With `<` carrying the project-window pair, all seven bindable German keys are in use.
 
 ## Appendix B — Actions that lose an alternative but stay reachable (15)
 
