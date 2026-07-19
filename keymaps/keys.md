@@ -6,8 +6,7 @@ numpad.
 **Why keys can be "unreachable":** IntelliJ shortcuts address *physical keys* (AWT virtual key codes), not the
 characters they produce. `meta SLASH` means the key
 `VK_SLASH` — which does not exist on a German keyboard, where `/` is only typed as
-`⇧7`. Pressing `⌘⇧7` delivers `meta shift 7`, never `meta SLASH`, so the shortcut can never fire. See
-`handover-unreachable-keys.md` §4.
+`⇧7`. Pressing `⌘⇧7` delivers `meta shift 7`, never `meta SLASH`, so the shortcut can never fire. (Deeper background: `handover-unreachable-keys.md`, a local research doc not tracked in this repo.)
 
 Legend:
 

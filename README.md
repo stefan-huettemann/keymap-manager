@@ -28,5 +28,4 @@ Installation and settings-sync setup: [`keymap-plugin/INSTALL.md`](keymap-plugin
 | `keymaps/$default.xml`, `keymaps/Mac OS X 10.5+.xml` | Platform reference keymaps, sorted for diffing |
 | `keymaps/keys.md` | Audit of all keys used, with German-layout reachability |
 | `keymaps/orig/` | Pristine platform keymap exports |
-| `handover-unreachable-keys.md` | Background: platform internals and the German keyboard constraint |
 | `CLAUDE.md` | Guidance for Claude Code sessions in this repo |

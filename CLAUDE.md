@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A **JetBrains plugins project** (see `README.md`). The active plugin is a keymap plugin: `CIVA Keymap` (ID `de.civa.keymap`) bundles the **MacBook Pro DE** keymap for all JetBrains IDEs on macOS. The driving constraint is a **German (T1/ISO) keyboard on a MacBook Pro** — many stock IntelliJ bindings are physically unpressable there and are being replaced.
 
-`handover-unreachable-keys.md` is the canonical background document: platform internals (verified against intellij-community source), the German-layout constraint, and the umlaut hex-encoding trick. Read it before touching keymap XML.
+`keymaps/keys.md` is the canonical reference: the German-layout constraint, the audit of every key the keymap uses, and the machine-verified table of bindable German keys (umlaut hex encoding). Read it before touching keymap XML. (A more detailed research doc, `handover-unreachable-keys.md`, exists locally but is gitignored — do not rely on it being present.)
 
 ## Commands
 
@@ -34,7 +34,7 @@ Install/activation steps for the built ZIP: `keymap-plugin/INSTALL.md`.
 ## Keymap XML invariants
 
 - Filename and the `name=` attribute must match exactly (`MacBook Pro DE` / `MacBook Pro DE.xml`). **Never rename the keymap** — users who selected it would be silently reverted to the default.
-- `parent="Mac OS X 10.5+"`. The name must not start with `Mac OS X` and must not reuse a reserved keymap name (list in `handover-unreachable-keys.md` §3.6).
+- `parent="Mac OS X 10.5+"`. The name must not start with `Mac OS X` (triggers `MacOSDefaultKeymap` modifier conversion) and must not reuse an official keymap name (`Eclipse`, `Emacs`, `NetBeans 6.5`, `QtCreator`, `ReSharper`, `Sublime Text`, `Visual Studio`, `Visual Assist`, `Xcode`, `Rider`, `VSCode`, `macOS System Shortcuts`, or their `… OSX`/`… (Mac OS X)` variants — canonical list in `notifyAboutMissingKeymap`, `KeymapImpl.kt`).
 - Empty `<action id="X"/>` elements are **load-bearing** — they clear bindings inherited from the parent. Do not remove them as cleanup.
 - German-layout rule: bindings address *physical keys* (VK codes), not characters. Never bind `SLASH`, `BACK_SLASH`, `OPEN_BRACKET`, `CLOSE_BRACKET`, `SEMICOLON`, `QUOTE`, `BACK_QUOTE`, `EQUALS` (no physical key on German T1), `INSERT` (no Mac key), or numpad keys `ADD`/`SUBTRACT`/`MULTIPLY`/`DIVIDE`/`NUMPADn` (MacBook Pro has no numpad).
 - `Ä Ö Ü ß` are bindable via extended hex codes (`meta #10000d6` = ⌘Ö). Do not compute the codes by hand — `Ü` breaks the codepoint pattern. The machine-verified values are tabulated in `keymaps/keys.md` ("Bindable German keys").
