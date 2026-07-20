@@ -10,6 +10,10 @@
     Shift/Option chords on the German layout, and there is no numpad or Insert
     key). After installing, select <b>MacBook Pro DE</b> under
     Settings &rarr; Keymap.
+    <br/><br/>
+    Includes a live conflict report (macOS system shortcuts and in-keymap
+    overlaps, with advice per conflict), reachable any time from
+    <b>Tools &rarr; Review Keymap Conflicts</b> or Find Action.
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>
@@ -18,6 +22,15 @@
     <bundledKeymap file="MacBook Pro DE.xml"/>
     <notificationGroup id="MacBook Pro DE Keymap" displayType="STICKY_BALLOON"/>
   </extensions>
+
+  <actions>
+    <action id="de.civa.keymap.ShowConflictReport"
+            class="de.civa.keymap.ShowConflictReportAction"
+            text="Review Keymap Conflicts…"
+            description="Review this keymap's shortcut conflicts with macOS and within the keymap">
+      <add-to-group group-id="ToolsMenu" anchor="last"/>
+    </action>
+  </actions>
 
   <applicationListeners>
     <listener class="de.civa.keymap.NationalLayoutCheck"
