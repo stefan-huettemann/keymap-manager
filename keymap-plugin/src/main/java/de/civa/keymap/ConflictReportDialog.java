@@ -11,6 +11,7 @@ import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.ColoredTreeCellRenderer;
+import com.intellij.ui.JBColor;
 import com.intellij.ui.OnePixelSplitter;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBLabel;
@@ -30,6 +31,7 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.util.List;
 
@@ -236,54 +238,104 @@ public final class ConflictReportDialog extends DialogWrapper {
     if (payload == null) { detail.setText(""); return; }
     StringBuilder sb = new StringBuilder("<html><body style='margin:0'>");
     if (payload instanceof Section s) {
-      sb.append("<h3>").append(escape(s.title())).append("</h3>")
-        .append("<p style='color:gray'>").append(escape(sectionBlurb(s.title()))).append("</p>");
+      sb.append("<h3 style='margin:0 0 4px 0'>").append(escape(s.title())).append("</h3>")
+        .append(grayBlock(escape(sectionBlurb(s.title()))));
     }
     else if (payload instanceof Empty e) {
-      sb.append("<p style='color:gray'>").append(escape(e.message())).append("</p>");
+      sb.append(grayBlock(escape(e.message())));
     }
     else if (payload instanceof KeymapItem ki) {
-      appendKeymapItem(sb, ki.c());
+      appendConflict(sb, ki.c(), true);
     }
     else if (payload instanceof OutsideItem oi) {
-      appendOutsideItem(sb, oi.c());
+      appendConflict(sb, oi.c(), false);
     }
     else if (payload instanceof ConflictAdvice.Supplement s) {
-      sb.append(head(s.keys()))
-        .append(row("IntelliJ", escape(s.ideaSide())))
-        .append(row("macOS", escape(s.macSide())))
-        .append("<p>").append(escape(s.note())).append("</p>");
+      sb.append(keyHead(s.keys()))
+        .append(factsTable(new String[][]{
+          {"IntelliJ", escape(s.ideaSide())},
+          {"macOS", escape(s.macSide())}}))
+        .append(callout("What this means", escape(s.note())));
     }
     else if (payload instanceof ConflictScan.InternalConflict c) {
-      sb.append(head(KeymapUtil.getShortcutText(c.shortcut())))
-        .append("<p style='color:gray'>").append(c.actions().size())
-        .append(" actions use this shortcut. This is not a conflict — IntelliJ picks the right one "
-          + "based on where you are (editor, a tool window, a dialog).</p>")
-        .append("<p>").append(actionList(c.actions())).append("</p>");
+      sb.append(keyHead(KeymapUtil.getShortcutText(c.shortcut())))
+        .append(grayBlock(c.actions().size() + " actions use this shortcut. This is not a conflict — "
+          + "IntelliJ picks the right one based on where you are (editor, a tool window, a dialog)."))
+        .append(factsTable(new String[][]{{"Actions", actionList(c.actions())}}));
     }
     sb.append("</body></html>");
     detail.setText(sb.toString());
     detail.setCaretPosition(0);
   }
 
-  private void appendKeymapItem(StringBuilder sb, ConflictScan.ExternalConflict c) {
-    sb.append(head(KeymapUtil.getKeystrokeText(c.stroke())))
-      .append("<p style='margin-top:0;color:gray'>").append(escape(status(c))).append("</p>")
-      .append(row("IntelliJ action", actionList(c.actions())))
-      .append(row("macOS uses this key for", escape(macList(c))))
-      .append("<p>").append(escape(c.advice().note())).append("</p>")
-      .append("<p><a href='civa:remove'>Remove this shortcut</a>"
-        + " &nbsp;•&nbsp; <a href='civa:settings'>Open Keymap settings</a></p>");
+  private void appendConflict(StringBuilder sb, ConflictScan.ExternalConflict c, boolean owned) {
+    sb.append(keyHead(KeymapUtil.getKeystrokeText(c.stroke())))
+      .append(statusBadge(c))
+      .append(factsTable(new String[][]{
+        {owned ? "IntelliJ action" : "Used by", actionList(c.actions())},
+        {"macOS", escape(macList(c))}}));
+    if (!owned) {
+      sb.append(grayBlock("This shortcut comes from another plugin or from IntelliJ itself, not from "
+        + "this keymap, so it can't be changed here."));
+    }
+    sb.append(callout("What to do", escape(c.advice().note())))
+      .append(links(owned));
   }
 
-  private void appendOutsideItem(StringBuilder sb, ConflictScan.ExternalConflict c) {
-    sb.append(head(KeymapUtil.getKeystrokeText(c.stroke())))
-      .append("<p style='margin-top:0;color:gray'>").append(escape(status(c))).append("</p>")
-      .append(row("Used by", actionList(c.actions())))
-      .append(row("macOS uses this key for", escape(macList(c))))
-      .append("<p>This shortcut comes from another plugin or from IntelliJ itself, not from this "
-        + "keymap, so it can't be changed here. ").append(escape(c.advice().note())).append("</p>")
-      .append("<p><a href='civa:settings'>Open Keymap settings</a></p>");
+  private static String links(boolean owned) {
+    String settings = "<a href='civa:settings'>Open Keymap settings</a>";
+    String body = owned ? "<a href='civa:remove'>Remove this shortcut</a> &nbsp;&nbsp;•&nbsp;&nbsp; " + settings
+                        : settings;
+    return "<div style='margin:12px 0 0 0'>" + body + "</div>";
+  }
+
+  // ---- detail formatting helpers --------------------------------------------------------------
+
+  private static String keyHead(String key) {
+    return "<div style='font-size:15pt; font-weight:bold; margin:0 0 4px 0'>" + escape(key) + "</div>";
+  }
+
+  private String statusBadge(ConflictScan.ExternalConflict c) {
+    boolean ok = c.advice().category() == ConflictAdvice.Category.DELIBERATE;
+    String colour = hex(ok ? okColour() : warnColour());
+    String glyph = ok ? "&#10004;" : "&#9888;";  // ✔ / ⚠
+    return "<div style='margin:0 0 8px 0; font-weight:bold; color:" + colour + "'>"
+      + glyph + "&nbsp; " + escape(status(c)) + "</div>";
+  }
+
+  private String factsTable(String[][] rows) {
+    StringBuilder t = new StringBuilder("<table cellpadding='2' cellspacing='0' style='margin:2px 0'>");
+    for (String[] r : rows) {
+      t.append("<tr><td valign='top'><span style='color:").append(hex(grayColour()))
+        .append("'><b>").append(escape(r[0])).append("</b></span>&nbsp;&nbsp;&nbsp;</td>")
+        .append("<td valign='top'>").append(r[1]).append("</td></tr>");
+    }
+    return t.append("</table>").toString();
+  }
+
+  private String callout(String title, String bodyHtml) {
+    return "<div style='margin:12px 0 3px 0; font-weight:bold'>" + escape(title) + "</div>"
+      + "<div style='margin:0'>" + bodyHtml + "</div>";
+  }
+
+  private String grayBlock(String bodyHtml) {
+    return "<div style='margin:2px 0 6px 0; color:" + hex(grayColour()) + "'>" + bodyHtml + "</div>";
+  }
+
+  private static String hex(Color c) {
+    return String.format("#%06x", c.getRGB() & 0xFFFFFF);
+  }
+
+  private Color grayColour() {
+    return UIUtil.getContextHelpForeground();
+  }
+
+  private static Color warnColour() {
+    return new JBColor(new Color(0xB3261E), new Color(0xF2B8B5));
+  }
+
+  private static Color okColour() {
+    return new JBColor(new Color(0x367C39), new Color(0x9CCC9C));
   }
 
   private static String status(ConflictScan.ExternalConflict c) {
@@ -322,14 +374,6 @@ public final class ConflictReportDialog extends DialogWrapper {
       }
     }
     return sb.toString();
-  }
-
-  private static String head(String title) {
-    return "<h2 style='margin-bottom:2px'>" + escape(title) + "</h2>";
-  }
-
-  private static String row(String label, String valueHtml) {
-    return "<p style='margin:3px 0'><b>" + escape(label) + ":</b> " + valueHtml + "</p>";
   }
 
   private static String escape(String s) {
