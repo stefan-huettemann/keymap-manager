@@ -138,11 +138,21 @@ public final class ConflictReportDialog extends DialogWrapper {
     init();
   }
 
+  // Section titles (used both as node labels and to spot the low-priority, collapsed-by-default ones).
+  private static final String SEC_OUTSIDE = "Conflicts outside this keymap";
+  private static final String SEC_KEYMAP = "Keymap conflicts";
+  private static final String SEC_IDEA_IGNORED = "Overlaps IntelliJ doesn't flag";
+  private static final String SEC_DOUBLE = "Double-bound keys — informational, not conflicts";
+
+  /** macOS shortcut ids IntelliJ's own keymap tool deliberately excludes from its conflict banner. */
+  private static final Set<String> IDEA_IGNORED_IDS = Set.of("FocusNextApplicationWindow", "FocusPreviousApplicationWindow");
+
   /** Typed tree payloads; the renderer and detail pane switch on these. */
   private record Section(String title, int count) {}
   private record Empty(String message) {}
   private record KeymapItem(ConflictScan.ExternalConflict c) {}
   private record OutsideItem(ConflictScan.ExternalConflict c) {}
+  private record IdeaIgnoredItem(ConflictScan.ExternalConflict c, boolean owned) {}
 
   @Override
   protected JComponent createCenterPanel() {
@@ -506,39 +516,55 @@ public final class ConflictReportDialog extends DialogWrapper {
   private DefaultMutableTreeNode buildRoot() {
     DefaultMutableTreeNode root = new DefaultMutableTreeNode();
 
-    if (!scan.outsideConflicts.isEmpty()) {
-      DefaultMutableTreeNode outside = new DefaultMutableTreeNode(
-        new Section("Conflicts outside this keymap", scan.outsideConflicts.size()));
-      for (ConflictScan.ExternalConflict c : scan.outsideConflicts) {
-        outside.add(new DefaultMutableTreeNode(new OutsideItem(c)));
-      }
+    // Overlaps IntelliJ's keymap tool deliberately ignores (window switching) go in their own
+    // section rather than mixed into the real conflicts; the rest keep their normal grouping.
+    List<ConflictScan.ExternalConflict> outsideNormal = scan.outsideConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
+    List<ConflictScan.ExternalConflict> keymapNormal = scan.keymapConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
+
+    if (!outsideNormal.isEmpty()) {
+      DefaultMutableTreeNode outside = new DefaultMutableTreeNode(new Section(SEC_OUTSIDE, outsideNormal.size()));
+      for (ConflictScan.ExternalConflict c : outsideNormal) outside.add(new DefaultMutableTreeNode(new OutsideItem(c)));
       root.add(outside);
     }
 
     // The curated SUPPLEMENT entries describe our keymap's specific overlaps, so show them only for it.
     List<ConflictAdvice.Supplement> supplements = scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.of();
     DefaultMutableTreeNode keymapNode = new DefaultMutableTreeNode(
-      new Section("Keymap conflicts", scan.keymapConflicts.size() + supplements.size()));
+      new Section(SEC_KEYMAP, keymapNormal.size() + supplements.size()));
     if (!scan.jbrApiAvailable) {
       keymapNode.add(new DefaultMutableTreeNode(new Empty("macOS scan unavailable on this runtime.")));
     }
-    else if (scan.keymapConflicts.isEmpty() && supplements.isEmpty()) {
+    else if (keymapNormal.isEmpty() && supplements.isEmpty()) {
       keymapNode.add(new DefaultMutableTreeNode(new Empty("No conflicts with macOS. Nothing to change.")));
     }
-    for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
-      keymapNode.add(new DefaultMutableTreeNode(new KeymapItem(c)));
-    }
-    for (ConflictAdvice.Supplement s : supplements) {
-      keymapNode.add(new DefaultMutableTreeNode(s));
-    }
+    for (ConflictScan.ExternalConflict c : keymapNormal) keymapNode.add(new DefaultMutableTreeNode(new KeymapItem(c)));
+    for (ConflictAdvice.Supplement s : supplements) keymapNode.add(new DefaultMutableTreeNode(s));
     root.add(keymapNode);
 
-    DefaultMutableTreeNode dbl = new DefaultMutableTreeNode(
-      new Section("Double-bound keys — informational, not conflicts", scan.internal.size()));
+    // IntelliJ-ignored overlaps, keeping ownership so the detail pane can still offer a cosmetic fix.
+    List<IdeaIgnoredItem> ignored = new ArrayList<>();
+    for (ConflictScan.ExternalConflict c : scan.keymapConflicts) if (ideaIgnored(c)) ignored.add(new IdeaIgnoredItem(c, true));
+    for (ConflictScan.ExternalConflict c : scan.outsideConflicts) if (ideaIgnored(c)) ignored.add(new IdeaIgnoredItem(c, false));
+    if (!ignored.isEmpty()) {
+      DefaultMutableTreeNode node = new DefaultMutableTreeNode(new Section(SEC_IDEA_IGNORED, ignored.size()));
+      for (IdeaIgnoredItem item : ignored) node.add(new DefaultMutableTreeNode(item));
+      root.add(node);
+    }
+
+    DefaultMutableTreeNode dbl = new DefaultMutableTreeNode(new Section(SEC_DOUBLE, scan.internal.size()));
     for (ConflictScan.InternalConflict c : scan.internal) dbl.add(new DefaultMutableTreeNode(c));
     root.add(dbl);
 
     return root;
+  }
+
+  /** True when macOS claims the key only via shortcuts IntelliJ's keymap tool ignores (window switching). */
+  private static boolean ideaIgnored(ConflictScan.ExternalConflict c) {
+    if (c.macOs().isEmpty()) return false;
+    for (ConflictScan.SystemShortcut s : c.macOs()) {
+      if (s.id() == null || !IDEA_IGNORED_IDS.contains(s.id())) return false;
+    }
+    return true;
   }
 
   private void refresh() {
@@ -549,13 +575,12 @@ public final class ConflictReportDialog extends DialogWrapper {
     updateSummary();
   }
 
-  /** Expand everything except the (long, low-value) double-bound list. */
+  /** Expand the actionable sections; leave the informational ones (double-bound, IntelliJ-ignored) collapsed. */
   private void expandActionableSections() {
     DefaultMutableTreeNode root = (DefaultMutableTreeNode) tree.getModel().getRoot();
     for (int i = 0; i < root.getChildCount(); i++) {
       DefaultMutableTreeNode section = (DefaultMutableTreeNode) root.getChildAt(i);
-      Object p = section.getUserObject();
-      if (p instanceof Section s && s.title().startsWith("Double-bound")) continue;
+      if (isInformationalSection(section.getUserObject())) continue;
       tree.expandPath(new TreePath(section.getPath()));
     }
   }
@@ -564,14 +589,17 @@ public final class ConflictReportDialog extends DialogWrapper {
     DefaultMutableTreeNode root = (DefaultMutableTreeNode) tree.getModel().getRoot();
     for (int i = 0; i < root.getChildCount(); i++) {
       DefaultMutableTreeNode section = (DefaultMutableTreeNode) root.getChildAt(i);
-      Object p = section.getUserObject();
-      if (p instanceof Section s && s.title().startsWith("Double-bound")) continue;
+      if (isInformationalSection(section.getUserObject())) continue;
       if (section.getChildCount() > 0) {
         DefaultMutableTreeNode first = (DefaultMutableTreeNode) section.getFirstChild();
         tree.setSelectionPath(new TreePath(first.getPath()));
         return;
       }
     }
+  }
+
+  private static boolean isInformationalSection(Object payload) {
+    return payload instanceof Section s && (s.title().equals(SEC_DOUBLE) || s.title().equals(SEC_IDEA_IGNORED));
   }
 
   private @Nullable Object payloadOf(@Nullable TreePath path) {
@@ -602,6 +630,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     Object payload = payloadOf(tree.getSelectionPath());
     if (payload instanceof KeymapItem ki) return ki.c();
     if (payload instanceof OutsideItem oi) return oi.c();
+    if (payload instanceof IdeaIgnoredItem ii) return ii.c();
     return null;
   }
 
@@ -764,10 +793,17 @@ public final class ConflictReportDialog extends DialogWrapper {
       sb.append(grayBlock(escape(e.message())));
     }
     else if (payload instanceof KeymapItem ki) {
-      appendConflict(sb, ki.c(), true);
+      appendConflict(sb, ki.c(), true, null);
     }
     else if (payload instanceof OutsideItem oi) {
-      appendConflict(sb, oi.c(), false);
+      appendConflict(sb, oi.c(), false, null);
+    }
+    else if (payload instanceof IdeaIgnoredItem ii) {
+      appendConflict(sb, ii.c(), ii.owned(),
+        "IntelliJ's own Keymap settings does <b>not</b> flag this as a conflict — it deliberately "
+        + "ignores window-switching overlaps — so no conflict marker appears for it there. It is "
+        + "listed here only for completeness; the shortcut works. Changing it is an optional, purely "
+        + "cosmetic tidy-up.");
     }
     else if (payload instanceof ConflictAdvice.Supplement s) {
       sb.append(keyHead(s.keys()))
@@ -787,7 +823,8 @@ public final class ConflictReportDialog extends DialogWrapper {
     detail.setCaretPosition(0);
   }
 
-  private void appendConflict(StringBuilder sb, ConflictScan.ExternalConflict c, boolean owned) {
+  private void appendConflict(StringBuilder sb, ConflictScan.ExternalConflict c, boolean owned,
+                              @Nullable String extraNoteHtml) {
     sb.append(keyHead(KeymapUtil.getKeystrokeText(c.stroke())))
       .append(statusBadge(c));
     String[][] rows = owned
@@ -801,8 +838,11 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "this keymap. You can still override it here — that edits your editable keymap (creating one "
         + "if needed), the same as changing it in IntelliJ's Keymap settings."));
     }
-    sb.append(callout("What to do", escape(c.advice().note())))
-      .append(links());
+    sb.append(callout("What to do", escape(c.advice().note())));
+    if (extraNoteHtml != null) {
+      sb.append(callout("Not flagged by IntelliJ", extraNoteHtml));  // already HTML; not escaped
+    }
+    sb.append(links());
   }
 
   private static String links() {
@@ -887,6 +927,12 @@ public final class ConflictReportDialog extends DialogWrapper {
       return "This keymap's own shortcuts that overlap a macOS system shortcut. Select one to see "
         + "whether it still works and to remove or change it.";
     }
+    if (title.equals(SEC_IDEA_IGNORED)) {
+      return "These shortcuts sit on a key macOS also uses for switching windows, but IntelliJ gets "
+        + "it first while its window is in front, so they keep working. IntelliJ's own Keymap settings "
+        + "deliberately ignores these overlaps and shows no conflict marker for them — they are listed "
+        + "here only for completeness. Selecting one still lets you change it, if you prefer.";
+    }
     return "One shortcut bound to several actions inside the keymap. Not a conflict — IntelliJ "
       + "picks the action that fits where you are. Shown for reference only.";
   }
@@ -936,6 +982,9 @@ public final class ConflictReportDialog extends DialogWrapper {
       }
       else if (p instanceof OutsideItem oi) {
         renderConflict(oi.c(), false);
+      }
+      else if (p instanceof IdeaIgnoredItem ii) {
+        renderConflict(ii.c(), ii.owned());
       }
       else if (p instanceof ConflictAdvice.Supplement s) {
         setIcon(AllIcons.General.Information);
