@@ -17,6 +17,7 @@ import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.keymap.ex.KeymapManagerEx;
 import com.intellij.openapi.keymap.impl.KeymapImpl;
 import com.intellij.openapi.keymap.impl.ui.KeymapPanel;
+import com.intellij.openapi.options.ExternalizableScheme;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
@@ -29,6 +30,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWrapper;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.DocumentAdapter;
+import com.intellij.ui.InplaceButton;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.OnePixelSplitter;
 import com.intellij.ui.SimpleTextAttributes;
@@ -57,7 +59,6 @@ import javax.swing.JPanel;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
 import javax.swing.ListCellRenderer;
-import javax.swing.SwingConstants;
 import javax.swing.border.Border;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.HyperlinkEvent;
@@ -71,6 +72,7 @@ import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.AWTEvent;
 import java.awt.BorderLayout;
+import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
@@ -114,6 +116,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   private JBLabel summaryText;
   private JBLabel summaryIcon;
   private ComboBox<Keymap> keymapCombo;
+  private JPanel keymapCard;                                     // CardLayout: "combo" | "rename"
+  private JBTextField renameField;                               // inline editor shown while renaming
   private final Set<Integer> separatorBefore = new HashSet<>();  // combo indices that start a group
   private boolean updatingModel;                                 // suppress the listener during rebuilds
   private JComponent buttonRow;
@@ -190,11 +194,19 @@ public final class ConflictReportDialog extends DialogWrapper {
       }
     });
 
-    JButton export = new JButton("Export");
-    export.setIcon(AllIcons.General.ButtonDropTriangle);          // caret marks it as a menu button
-    export.setHorizontalTextPosition(SwingConstants.LEADING);     // text left, caret on the right
-    export.setIconTextGap(JBUI.scale(6));
-    export.addActionListener(e -> showExportMenu(export));
+    // The combo and the inline rename editor share one slot, swapped by CardLayout.
+    renameField = new JBTextField();
+    renameField.registerKeyboardAction(e -> commitRename(),
+      KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), JComponent.WHEN_FOCUSED);
+    renameField.registerKeyboardAction(e -> cancelRename(),
+      KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_FOCUSED);
+    keymapCard = new JPanel(new CardLayout());
+    keymapCard.add(keymapCombo, "combo");
+    keymapCard.add(renameField, "rename");
+
+    // Gear menu, like IDEA's scheme actions: export always, plus rename/delete for editable keymaps.
+    InplaceButton[] gear = new InplaceButton[1];
+    gear[0] = new InplaceButton("Keymap actions", AllIcons.General.GearPlain, e -> showGearMenu(gear[0]));
 
     JButton activate = new JButton("Activate");
     activate.addActionListener(e -> activateSelected());
@@ -207,24 +219,101 @@ public final class ConflictReportDialog extends DialogWrapper {
     selector.setLayout(new BoxLayout(selector, BoxLayout.Y_AXIS));
     selector.setBorder(JBUI.Borders.compound(
       JBUI.Borders.customLineBottom(JBColor.border()), JBUI.Borders.empty(8, 12)));
-    selector.add(centered(new JBLabel("Keymap:"), keymapCombo, export));
+    selector.add(centered(new JBLabel("Keymap:"), keymapCard, gear[0]));
     selector.add(buttonRow);
     return selector;
   }
 
-  /** "Export…" opens a small menu to pick the scope; the choice then leads to a save dialog. */
-  private void showExportMenu(JComponent anchor) {
+  /** The gear menu: the three exports, and (for an editable keymap) rename and delete. */
+  private void showGearMenu(Component anchor) {
     JBPopupMenu menu = new JBPopupMenu();
-    JMenuItem full = new JMenuItem("Full keymap (.xml)");
-    full.addActionListener(e -> exportKeymap(ExportScope.FULL));
-    JMenuItem conflicts = new JMenuItem("Only conflicting mappings (.xml)");
-    conflicts.addActionListener(e -> exportKeymap(ExportScope.CONFLICTS));
-    JMenuItem both = new JMenuItem("Conflicting + overlapping mappings (.xml)");
-    both.addActionListener(e -> exportKeymap(ExportScope.CONFLICTS_AND_OVERLAPS));
-    menu.add(full);
-    menu.add(conflicts);
-    menu.add(both);
+    menu.add(exportItem("Export full keymap (.xml)", ExportScope.FULL));
+    menu.add(exportItem("Export only conflicting mappings (.xml)", ExportScope.CONFLICTS));
+    menu.add(exportItem("Export conflicting + overlapping mappings (.xml)", ExportScope.CONFLICTS_AND_OVERLAPS));
+    if (keymap.canModify()) {
+      menu.addSeparator();
+      JMenuItem rename = new JMenuItem("Rename…");
+      rename.addActionListener(e -> startRename());
+      menu.add(rename);
+      JMenuItem delete = new JMenuItem("Delete…");
+      delete.addActionListener(e -> deleteKeymap());
+      menu.add(delete);
+    }
     menu.show(anchor, 0, anchor.getHeight());
+  }
+
+  private JMenuItem exportItem(String label, ExportScope scope) {
+    JMenuItem item = new JMenuItem(label);
+    item.addActionListener(e -> exportKeymap(scope));
+    return item;
+  }
+
+  // ---- rename / delete ------------------------------------------------------------------------
+
+  /** Swap the combo for an inline text editor (Enter saves, Esc cancels), like IDEA's scheme rename. */
+  private void startRename() {
+    if (!keymap.canModify()) return;
+    renameField.setText(keymap.getPresentableName());
+    ((CardLayout) keymapCard.getLayout()).show(keymapCard, "rename");
+    renameField.selectAll();
+    renameField.requestFocusInWindow();
+  }
+
+  private void cancelRename() {
+    ((CardLayout) keymapCard.getLayout()).show(keymapCard, "combo");
+  }
+
+  private void commitRename() {
+    String newName = renameField.getText().trim();
+    String current = keymap.getName();
+    if (newName.isEmpty() || newName.equals(current)) { cancelRename(); return; }
+    for (Keymap k : KeymapManagerEx.getInstanceEx().getAllKeymaps()) {
+      if (!sameKeymap(k, keymap) && newName.equals(k.getName())) {
+        Messages.showErrorDialog(project, "A keymap named “" + newName + "” already exists.", "Rename Keymap");
+        renameField.requestFocusInWindow();
+        return;
+      }
+    }
+    if (!(keymap instanceof ExternalizableScheme scheme)) { cancelRename(); return; }
+    // Re-register under the new name so the scheme manager's name index stays consistent.
+    boolean wasActive = sameKeymap(keymap, active);
+    KeymapManagerEx manager = KeymapManagerEx.getInstanceEx();
+    manager.getSchemeManager().removeScheme(keymap);
+    scheme.setName(newName);
+    manager.getSchemeManager().addScheme(keymap);
+    if (wasActive) { manager.setActiveKeymap(keymap); active = keymap; }
+    cancelRename();
+    reloadKeymaps();
+  }
+
+  private void deleteKeymap() {
+    if (!keymap.canModify()) return;
+    int choice = Messages.showYesNoDialog(project,
+      "Delete the keymap “" + keymap.getPresentableName() + "”? This cannot be undone.",
+      "Delete Keymap", "Delete", "Cancel", Messages.getWarningIcon());
+    if (choice != Messages.YES) return;
+
+    KeymapManagerEx manager = KeymapManagerEx.getInstanceEx();
+    Keymap deleted = keymap;
+    boolean wasActive = sameKeymap(deleted, active);
+    manager.getSchemeManager().removeScheme(deleted);
+    if (wasActive) {
+      Keymap fallback = deleted.getParent();
+      if (fallback == null) {
+        Keymap[] remaining = manager.getAllKeymaps();
+        fallback = remaining.length > 0 ? remaining[0] : null;
+      }
+      if (fallback == null) return;  // nothing left to fall back to (should never happen)
+      manager.setActiveKeymap(fallback);
+      active = fallback;
+      keymap = fallback;
+    }
+    else {
+      keymap = active;  // a previewed, non-active keymap was deleted — keep the active one
+    }
+    reloadKeymaps();
+    refresh();
+    updateActionButtons();
   }
 
   /** A row that lays out its children centered at their preferred size. */
