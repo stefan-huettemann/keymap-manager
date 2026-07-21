@@ -6,13 +6,16 @@ import com.intellij.openapi.actionSystem.KeyboardShortcut;
 import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.KeymapManager;
 import com.intellij.openapi.keymap.KeymapUtil;
+import com.intellij.openapi.keymap.ex.KeymapManagerEx;
 import com.intellij.openapi.keymap.impl.ui.KeymapPanel;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
@@ -21,6 +24,7 @@ import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JPanel;
@@ -33,35 +37,36 @@ import javax.swing.tree.TreeSelectionModel;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.util.List;
 
 /**
- * A foldable, navigable view of the active keymap's shortcut conflicts, produced live by
- * {@link ConflictScan}. Three sections, ordered by how much the reader should care:
+ * A foldable, navigable view of a keymap's shortcut conflicts, produced live by
+ * {@link ConflictScan}. Laid out in three parts, top to bottom:
  * <ol>
- *   <li><b>Conflicts outside this keymap</b> — shortcuts from other plugins or the IDE that sit on
- *       a key macOS also uses. We can't change them here, but we explain why they may not work.
- *       Hidden when empty.</li>
- *   <li><b>Keymap conflicts</b> — this keymap's own shortcuts that overlap macOS. Each can be
- *       removed or changed from here.</li>
- *   <li><b>Double-bound keys</b> — one shortcut on several actions inside the keymap. Not a
- *       conflict; shown for reference.</li>
+ *   <li><b>Keymap selector</b> — a dropdown of every installed keymap, defaulting to the active
+ *       one; picking another re-scans and repopulates the whole report.</li>
+ *   <li><b>Summary pane</b> — one prominent, icon-tagged status line for the selected keymap.</li>
+ *   <li><b>Details pane</b> — a {@link Tree} navigating three sections (conflicts outside this
+ *       keymap; the keymap's own conflicts, removable here; double-bound keys, informational) beside
+ *       a detail view that explains the selected row and offers the fix links.</li>
  * </ol>
- * A {@link Tree} navigates; a detail pane explains the selected row and offers the fix links.
  */
 public final class ConflictReportDialog extends DialogWrapper {
   private final Project project;
-  private final Keymap keymap;
+  private Keymap keymap;
   private ConflictScan scan;
   private Tree tree;
   private JEditorPane detail;
+  private JBLabel summaryText;
+  private JBLabel summaryIcon;
 
   public ConflictReportDialog(@Nullable Project project) {
     super(project);
     this.project = project;
     keymap = KeymapManager.getInstance().getActiveKeymap();
     scan = ConflictScan.of(keymap);
-    setTitle(keymap.getPresentableName() + " — Keymap Conflicts");
+    setTitle("Review Keymap Conflicts");
     setResizable(true);
     init();
   }
@@ -90,15 +95,41 @@ public final class ConflictReportDialog extends DialogWrapper {
     expandActionableSections();
     selectFirstConflict();
 
+    // Details pane: the tree navigator and its per-row explanation.
     OnePixelSplitter splitter = new OnePixelSplitter(false, 0.44f);
     splitter.setFirstComponent(new JBScrollPane(tree));
     splitter.setSecondComponent(new JBScrollPane(detail));
 
+    // Header stacks the keymap selector above the prominent status summary.
+    JPanel header = new JPanel(new BorderLayout());
+    header.add(selectorPane(), BorderLayout.NORTH);
+    header.add(summaryPane(), BorderLayout.CENTER);
+
     JPanel panel = new JPanel(new BorderLayout());
-    panel.add(summaryLabel(), BorderLayout.NORTH);
+    panel.add(header, BorderLayout.NORTH);
     panel.add(splitter, BorderLayout.CENTER);
-    panel.setPreferredSize(new Dimension(JBUI.scale(800), JBUI.scale(560)));
+    panel.setPreferredSize(new Dimension(JBUI.scale(820), JBUI.scale(600)));
     return panel;
+  }
+
+  // ---- keymap selector ------------------------------------------------------------------------
+
+  private JComponent selectorPane() {
+    ComboBox<Keymap> combo = new ComboBox<>(KeymapManagerEx.getInstanceEx().getAllKeymaps());
+    combo.setSelectedItem(keymap);
+    combo.setRenderer(SimpleListCellRenderer.create("", Keymap::getPresentableName));
+    combo.addActionListener(e -> {
+      if (combo.getSelectedItem() instanceof Keymap k && !k.equals(keymap)) {
+        keymap = k;
+        refresh();
+      }
+    });
+
+    JPanel row = new JPanel(new BorderLayout(JBUI.scale(8), 0));
+    row.setBorder(JBUI.Borders.empty(8, 10, 6, 10));
+    row.add(new JBLabel("Keymap:"), BorderLayout.WEST);
+    row.add(combo, BorderLayout.CENTER);
+    return row;
   }
 
   // ---- tree model -----------------------------------------------------------------------------
@@ -144,6 +175,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     tree.setModel(new DefaultTreeModel(buildRoot()));
     expandActionableSections();
     selectFirstConflict();
+    updateSummary();
   }
 
   /** Expand everything except the (long, low-value) double-bound list. */
@@ -205,27 +237,47 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   // ---- summary --------------------------------------------------------------------------------
 
-  private JComponent summaryLabel() {
+  /** Prominent, always-visible status line; kept in sync by {@link #updateSummary()}. */
+  private JComponent summaryPane() {
+    summaryIcon = new JBLabel();
+    summaryText = new JBLabel();
+    summaryText.setFont(summaryText.getFont().deriveFont(Font.PLAIN, JBUI.scaleFontSize(13f)));
+    updateSummary();
+
+    JPanel row = new JPanel(new BorderLayout(JBUI.scale(8), 0));
+    row.setBorder(JBUI.Borders.compound(
+      JBUI.Borders.customLineBottom(JBColor.border()),
+      JBUI.Borders.empty(10, 12)));
+    row.add(summaryIcon, BorderLayout.WEST);
+    row.add(summaryText, BorderLayout.CENTER);
+    return row;
+  }
+
+  private void updateSummary() {
     int total = scan.keymapConflicts.size() + scan.outsideConflicts.size();
     long broken = scan.keymapConflicts.stream().filter(c -> needsAttention(c)).count()
                 + scan.outsideConflicts.stream().filter(c -> needsAttention(c)).count();
     String text;
+    Icon icon;
     if (!scan.jbrApiAvailable) {
       text = "The macOS shortcut check is unavailable on this runtime.";
+      icon = AllIcons.General.Information;
     }
     else if (total == 0) {
       text = "<b>No overlaps with macOS system shortcuts.</b>";
+      icon = AllIcons.General.InspectionsOK;
     }
     else if (broken == 0) {
       text = "<b>Nothing broken.</b> " + total + " shortcut(s) overlap macOS but keep working.";
+      icon = AllIcons.General.Information;
     }
     else {
       text = "<b>" + broken + " shortcut(s) need attention</b> — macOS takes the key first. "
         + (total - broken) + " more overlap but keep working.";
+      icon = AllIcons.General.Warning;
     }
-    JBLabel label = new JBLabel("<html>" + text + "</html>");
-    label.setBorder(JBUI.Borders.empty(6, 10, 8, 10));
-    return label;
+    summaryText.setText("<html>" + text + "</html>");
+    summaryIcon.setIcon(icon);
   }
 
   private static boolean needsAttention(ConflictScan.ExternalConflict c) {

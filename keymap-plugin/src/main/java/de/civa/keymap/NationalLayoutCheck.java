@@ -50,25 +50,29 @@ public final class NationalLayoutCheck implements KeymapManagerListener, AppLife
   }
 
   private static void checkKeymap(@Nullable Keymap keymap) {
-    if (keymap == null || !SystemInfoRt.isMac || !KEYMAP_NAME.equals(keymap.getName())) {
+    if (keymap == null || !SystemInfoRt.isMac) {
       return;
     }
     if (!NOTIFIED.compareAndSet(false, true)) {
       return;
     }
-    boolean layoutOff = !NationalKeyboardSupport.getInstance().getEnabled();
+    // The national-layout warning only applies to our keymap — it is the one binding German keys.
+    // For any other active keymap we still offer the conflict report, which scans whatever is active.
+    boolean ownKeymap = KEYMAP_NAME.equals(keymap.getName());
+    boolean layoutOff = ownKeymap && !NationalKeyboardSupport.getInstance().getEnabled();
     Notification notification = NotificationGroupManager.getInstance()
       .getNotificationGroup(NOTIFICATION_GROUP)
       .createNotification(
         layoutOff
           ? "MacBook Pro DE keymap needs national keyboard layout support"
-          : "MacBook Pro DE keymap activated",
+          : "Review keymap conflicts",
         layoutOff
           ? "This keymap binds keys of the German layout (Ä Ö Ü ß + # <), which only work while " +
             "\"Use national keyboard layouts for shortcuts\" is enabled (Settings → Keymap). " +
             "Enabling requires an IDE restart."
-          : "Some shortcuts may overlap macOS system shortcuts or each other. Review which " +
-            "are intentional and which need a change.",
+          : "The active keymap \"" + keymap.getPresentableName() + "\" may have shortcuts that " +
+            "overlap macOS system shortcuts or each other. Review which are intentional and which " +
+            "need a change.",
         layoutOff ? NotificationType.WARNING : NotificationType.INFORMATION);
     if (layoutOff) {
       notification.addAction(NotificationAction.createSimple("Enable and restart", () -> enableAndRestart(notification)));
