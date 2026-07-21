@@ -1,10 +1,12 @@
 package de.civa.keymap;
 
+import com.intellij.ide.plugins.PluginManager;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.KeyboardShortcut;
 import com.intellij.openapi.actionSystem.Shortcut;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.KeymapUtil;
 import org.jetbrains.annotations.Nullable;
@@ -37,9 +39,11 @@ import org.w3c.dom.NodeList;
  * are kept, not skipped: an unnamed shortcut can still swallow the key (⌘Escape does), so hiding
  * it would hide a real breakage.</p>
  *
- * <p>External conflicts are split by ownership: {@link #keymapConflicts} are bindings this keymap
- * defines (we can offer to change them), {@link #outsideConflicts} are bindings from other plugins
- * or the IDE that happen to sit on a contested key (we can only explain them).</p>
+ * <p>For the keymap this plugin bundles, external conflicts are split by ownership: {@link
+ * #keymapConflicts} are the bindings it curates, {@link #outsideConflicts} are bindings from other
+ * plugins or the IDE that happen to sit on a contested key (we can only explain those). The split is
+ * keyed to that keymap by name; for any other selected keymap it does not apply and every overlap is
+ * reported as the keymap's own ({@link #outsideConflicts} stays empty).</p>
  *
  * <p><b>Internal</b> conflicts ({@link #internal}) are identical shortcuts carrying more than one
  * action inside the keymap. Almost always deliberate — the actions live in mutually exclusive UI
@@ -58,8 +62,8 @@ final class ConflictScan {
     }
   }
 
-  /** An IntelliJ action, with its human-readable name resolved where possible. */
-  record ActionRef(String id, String displayName) {
+  /** An IntelliJ action, with its human-readable name and providing plugin resolved where possible. */
+  record ActionRef(String id, @Nullable String displayName, @Nullable String source) {
     String label() {
       return displayName != null && !displayName.isEmpty() ? displayName : id;
     }
@@ -73,13 +77,16 @@ final class ConflictScan {
   record InternalConflict(Shortcut shortcut, List<ActionRef> actions) {}
 
   final boolean jbrApiAvailable;
+  /** True only for the keymap this plugin bundles — gates the curated, keymap-specific extras. */
+  final boolean ownKeymap;
   final List<ExternalConflict> keymapConflicts;
   final List<ExternalConflict> outsideConflicts;
   final List<InternalConflict> internal;
 
-  private ConflictScan(boolean jbrApiAvailable, List<ExternalConflict> keymapConflicts,
+  private ConflictScan(boolean jbrApiAvailable, boolean ownKeymap, List<ExternalConflict> keymapConflicts,
                        List<ExternalConflict> outsideConflicts, List<InternalConflict> internal) {
     this.jbrApiAvailable = jbrApiAvailable;
+    this.ownKeymap = ownKeymap;
     this.keymapConflicts = keymapConflicts;
     this.outsideConflicts = outsideConflicts;
     this.internal = internal;
@@ -87,7 +94,9 @@ final class ConflictScan {
 
   static ConflictScan of(Keymap keymap) {
     Map<KeyStroke, List<SystemShortcut>> system = querySystemShortcuts();
-    Set<String> ownActions = loadOwnActionIds();
+    // Non-null only when this is the keymap the plugin bundles; then it splits our curated bindings
+    // from platform/plugin ones. For any other keymap it is null: every overlap is that keymap's own.
+    Set<String> ownActions = ownActionIdsFor(keymap);
 
     // macOS matches on the first keystroke (a chord loses its first key the same way); an internal
     // duplicate counts only when the whole shortcut (incl. second keystroke) is identical.
@@ -109,6 +118,10 @@ final class ConflictScan {
         if (macOs == null) continue;
         ConflictAdvice.Advice advice = ConflictAdvice.resolve(macOs, e.getKey());
         List<String> ids = e.getValue().stream().distinct().sorted().toList();
+        if (ownActions == null) {
+          keymapConflicts.add(new ExternalConflict(e.getKey(), macOs, refs(ids), advice));
+          continue;
+        }
         List<ActionRef> ours = refs(ids.stream().filter(ownActions::contains).toList());
         List<ActionRef> theirs = refs(ids.stream().filter(id -> !ownActions.contains(id)).toList());
         if (!ours.isEmpty()) keymapConflicts.add(new ExternalConflict(e.getKey(), macOs, ours, advice));
@@ -127,7 +140,7 @@ final class ConflictScan {
     internal.sort(Comparator.comparingInt((InternalConflict c) -> -c.actions().size())
       .thenComparing(c -> KeymapUtil.getShortcutText(c.shortcut())));
 
-    return new ConflictScan(system != null, List.copyOf(keymapConflicts),
+    return new ConflictScan(system != null, ownActions != null, List.copyOf(keymapConflicts),
       List.copyOf(outsideConflicts), List.copyOf(internal));
   }
 
@@ -141,27 +154,50 @@ final class ConflictScan {
     List<ActionRef> result = new ArrayList<>(ids.size());
     for (String id : ids) {
       String name = null;
+      String source = null;
       AnAction action = am.getAction(id);
       if (action != null) {
         String text = action.getTemplateText();
         if (text != null && !text.isBlank()) name = text;
+        source = sourceOf(action);
       }
-      result.add(new ActionRef(id, name));
+      result.add(new ActionRef(id, name, source));
     }
     return result;
   }
 
-  /** Action ids this keymap binds directly — read from the bundled keymap resource. */
-  private static Set<String> loadOwnActionIds() {
-    Set<String> ids = new HashSet<>();
+  /** Which plugin provides an action — "IDE" for the platform core, else the plugin's name, or null. */
+  private static @Nullable String sourceOf(AnAction action) {
+    try {
+      PluginDescriptor plugin = PluginManager.getPluginByClass(action.getClass());
+      if (plugin == null || plugin.getPluginId() == null) return null;
+      return "com.intellij".equals(plugin.getPluginId().getIdString()) ? "IDE" : plugin.getName();
+    }
+    catch (RuntimeException e) {
+      return null;
+    }
+  }
+
+  /**
+   * The action ids the plugin's bundled keymap binds directly — but only when {@code keymap} is that
+   * keymap (matched by name against the bundled resource). Returns {@code null} for every other
+   * keymap: the ownership split is a curated feature of our keymap, so applying our action set to a
+   * different keymap would mislabel its bindings. A {@code null} result means "treat all as own".
+   */
+  private static @Nullable Set<String> ownActionIdsFor(Keymap keymap) {
     try (InputStream in = ConflictScan.class.getResourceAsStream(OWN_KEYMAP_RESOURCE)) {
       if (in == null) {
         LOG.warn("Bundled keymap resource not found: " + OWN_KEYMAP_RESOURCE);
-        return ids;
+        return null;
       }
       var factory = DocumentBuilderFactory.newInstance();
       factory.setNamespaceAware(false);
-      NodeList actions = factory.newDocumentBuilder().parse(in).getElementsByTagName("action");
+      Element root = factory.newDocumentBuilder().parse(in).getDocumentElement();
+      if (!keymap.getName().equals(root.getAttribute("name"))) {
+        return null;  // a different keymap is selected — don't split against our action set
+      }
+      Set<String> ids = new HashSet<>();
+      NodeList actions = root.getElementsByTagName("action");
       for (int i = 0; i < actions.getLength(); i++) {
         Element action = (Element) actions.item(i);
         // Only a binding counts as "ours"; an empty <action id=".."/> just clears the parent.
@@ -169,11 +205,17 @@ final class ConflictScan {
           ids.add(action.getAttribute("id"));
         }
       }
+      return ids;
     }
     catch (Exception e) {
       LOG.warn("Could not read bundled keymap for ownership split: " + e);
+      return null;
     }
-    return ids;
+  }
+
+  /** The live macOS shortcut table (keyed by keystroke), or {@code null} if the JBR API is unavailable. */
+  static @Nullable Map<KeyStroke, List<SystemShortcut>> systemShortcuts() {
+    return querySystemShortcuts();
   }
 
   /**
