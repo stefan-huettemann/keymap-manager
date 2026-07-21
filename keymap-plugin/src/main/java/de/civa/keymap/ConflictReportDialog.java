@@ -4,8 +4,12 @@ import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.actionSystem.KeyboardShortcut;
+import com.intellij.openapi.actionSystem.Separator;
 import com.intellij.openapi.actionSystem.Shortcut;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
@@ -22,7 +26,6 @@ import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.openapi.ui.JBPopupMenu;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
@@ -33,6 +36,7 @@ import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.InplaceButton;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.RowIcon;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
@@ -46,6 +50,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.Icon;
 import javax.swing.JButton;
@@ -54,8 +59,8 @@ import javax.swing.JComponent;
 import javax.swing.JEditorPane;
 import javax.swing.JLabel;
 import javax.swing.JList;
-import javax.swing.JMenuItem;
 import javax.swing.JPanel;
+import javax.swing.JRadioButton;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
 import javax.swing.ListCellRenderer;
@@ -204,9 +209,10 @@ public final class ConflictReportDialog extends DialogWrapper {
     keymapCard.add(keymapCombo, "combo");
     keymapCard.add(renameField, "rename");
 
-    // Gear menu, like IDEA's scheme actions: export always, plus rename/delete for editable keymaps.
+    // Gear menu, like IDEA's scheme actions. The trailing triangle marks it as a menu button.
+    Icon gearIcon = new RowIcon(AllIcons.General.GearPlain, AllIcons.General.ButtonDropTriangle);
     InplaceButton[] gear = new InplaceButton[1];
-    gear[0] = new InplaceButton("Keymap actions", AllIcons.General.GearPlain, e -> showGearMenu(gear[0]));
+    gear[0] = new InplaceButton("Keymap actions", gearIcon, e -> showGearMenu(gear[0]));
 
     JButton activate = new JButton("Activate");
     activate.addActionListener(e -> activateSelected());
@@ -224,31 +230,42 @@ public final class ConflictReportDialog extends DialogWrapper {
     return selector;
   }
 
-  /** The gear menu: the three exports, and (for an editable keymap) rename and delete. */
+  /** A real IDEA action menu: the three exports and duplicate always, rename/delete when editable. */
   private void showGearMenu(Component anchor) {
-    JBPopupMenu menu = new JBPopupMenu();
-    menu.add(exportItem("Export full keymap (.xml)", ExportScope.FULL));
-    menu.add(exportItem("Export only conflicting mappings (.xml)", ExportScope.CONFLICTS));
-    menu.add(exportItem("Export conflicting + overlapping mappings (.xml)", ExportScope.CONFLICTS_AND_OVERLAPS));
-    if (keymap.canModify()) {
-      menu.addSeparator();
-      JMenuItem rename = new JMenuItem("Rename…");
-      rename.addActionListener(e -> startRename());
-      menu.add(rename);
-      JMenuItem delete = new JMenuItem("Delete…");
-      delete.addActionListener(e -> deleteKeymap());
-      menu.add(delete);
-    }
-    menu.show(anchor, 0, anchor.getHeight());
+    DefaultActionGroup group = new DefaultActionGroup(
+      menuAction("Export full keymap (.xml)", false, () -> exportKeymap(ExportScope.FULL)),
+      menuAction("Export only conflicting mappings (.xml)", false, () -> exportKeymap(ExportScope.CONFLICTS)),
+      menuAction("Export conflicting + overlapping mappings (.xml)", false, () -> exportKeymap(ExportScope.CONFLICTS_AND_OVERLAPS)),
+      Separator.getInstance(),
+      menuAction("Duplicate", false, this::duplicateKeymap),
+      menuAction("Rename…", true, this::startRename),
+      menuAction("Delete…", true, this::deleteKeymap));
+    ActionManager.getInstance().createActionPopupMenu("CivaKeymapGear", group)
+      .getComponent().show(anchor, 0, anchor.getHeight());
   }
 
-  private JMenuItem exportItem(String label, ExportScope scope) {
-    JMenuItem item = new JMenuItem(label);
-    item.addActionListener(e -> exportKeymap(scope));
-    return item;
+  /** A menu action; when {@code editableOnly}, it is hidden unless the selected keymap can be modified. */
+  private AnAction menuAction(String text, boolean editableOnly, Runnable run) {
+    return new AnAction(text) {
+      @Override public void actionPerformed(@NotNull AnActionEvent e) { run.run(); }
+      @Override public void update(@NotNull AnActionEvent e) {
+        e.getPresentation().setEnabledAndVisible(!editableOnly || keymap.canModify());
+      }
+      @Override public ActionUpdateThread getActionUpdateThread() { return ActionUpdateThread.EDT; }
+    };
   }
 
-  // ---- rename / delete ------------------------------------------------------------------------
+  // ---- duplicate / rename / delete ------------------------------------------------------------
+
+  /** Make an editable copy of the selected keymap and preview it (use Activate to switch to it). */
+  private void duplicateKeymap() {
+    Keymap copy = keymap.deriveKeymap(uniqueKeymapName(keymap.getPresentableName()));
+    KeymapManagerEx.getInstanceEx().getSchemeManager().addScheme(copy);
+    keymap = copy;            // select and preview the copy; the active keymap is left unchanged
+    reloadKeymaps();
+    refresh();
+    updateActionButtons();    // Activate/Reset appear, since the copy differs from the active keymap
+  }
 
   /** Swap the combo for an inline text editor (Enter saves, Esc cancels), like IDEA's scheme rename. */
   private void startRename() {
@@ -960,6 +977,9 @@ public final class ConflictReportDialog extends DialogWrapper {
   private static final class ShortcutInputDialog extends DialogWrapper {
     private static final int MODIFIER_MASK = InputEvent.META_DOWN_MASK | InputEvent.ALT_DOWN_MASK
                                            | InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK;
+    // Keys that can't be typed/pressed into the field (bare ones drive the dialog); pick via a radio.
+    private static final int[] SPECIAL_CODES = {KeyEvent.VK_ENTER, KeyEvent.VK_ESCAPE, KeyEvent.VK_BACK_SPACE, KeyEvent.VK_TAB};
+    private static final String[] SPECIAL_SYMBOLS = {"↩", "⎋", "⌫", "⇥"};
 
     private final Keymap keymap;
     private final KeyStroke original;
@@ -973,6 +993,8 @@ public final class ConflictReportDialog extends DialogWrapper {
     private final JBTextField keyField = new JBTextField(6);
     private final JBLabel preview = new JBLabel();
     private final JBLabel status = new JBLabel();
+    private final ButtonGroup specialGroup = new ButtonGroup();
+    private JRadioButton[] specialRadios;
     private int keyCode = KeyEvent.VK_UNDEFINED;  // the chosen key; the source of truth for build()
     private boolean settingText;                  // true while the field is set programmatically
     private KeyStroke result;
@@ -1013,6 +1035,7 @@ public final class ConflictReportDialog extends DialogWrapper {
           if (settingText) return;  // ignore programmatic display updates (e.g. "Enter")
           String t = keyField.getText().trim();
           keyCode = t.length() == 1 ? KeyEvent.getExtendedKeyCodeForChar(t.charAt(0)) : KeyEvent.VK_UNDEFINED;
+          syncSpecialRadios(keyCode);  // a typed character is never a special key → clears the radios
           updateResult();
         }
       });
@@ -1024,9 +1047,23 @@ public final class ConflictReportDialog extends DialogWrapper {
       }
       preview.setFont(preview.getFont().deriveFont(Font.BOLD));
 
+      // Radios for keys that can't be pressed into the field (e.g. ⌘Esc): selecting one sets that key.
+      JPanel keyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0));
+      keyRow.add(keyField);
+      specialRadios = new JRadioButton[SPECIAL_CODES.length];
+      for (int i = 0; i < SPECIAL_CODES.length; i++) {
+        int vk = SPECIAL_CODES[i];
+        JRadioButton radio = new JRadioButton(SPECIAL_SYMBOLS[i]);
+        radio.setToolTipText(KeyEvent.getKeyText(vk));
+        radio.addActionListener(e -> { setKey(vk); updateResult(); });
+        specialGroup.add(radio);
+        specialRadios[i] = radio;
+        keyRow.add(radio);
+      }
+
       FormBuilder form = FormBuilder.createFormBuilder()
         .addLabeledComponent("Current:", new JBLabel(KeymapUtil.getKeystrokeText(original)))
-        .addLabeledComponent("Key:", keyField)
+        .addLabeledComponent("Key:", keyRow)
         .addLabeledComponent("Modifiers:", modifiers)
         .addLabeledComponent("New:", preview)
         .addComponent(status)
@@ -1062,12 +1099,27 @@ public final class ConflictReportDialog extends DialogWrapper {
       updateResult();
     }
 
-    /** Record the key and show its name, without the document listener re-parsing the display text. */
+    /** Record the key, show its name/symbol, and sync the special radios — without re-parsing. */
     private void setKey(int code) {
       keyCode = code;
       settingText = true;
-      keyField.setText(KeyEvent.getKeyText(code));
+      keyField.setText(displayFor(code));
       settingText = false;
+      syncSpecialRadios(code);
+    }
+
+    private void syncSpecialRadios(int code) {
+      for (int i = 0; i < SPECIAL_CODES.length; i++) {
+        if (SPECIAL_CODES[i] == code) { specialRadios[i].setSelected(true); return; }
+      }
+      specialGroup.clearSelection();
+    }
+
+    private static String displayFor(int code) {
+      for (int i = 0; i < SPECIAL_CODES.length; i++) {
+        if (SPECIAL_CODES[i] == code) return SPECIAL_SYMBOLS[i];
+      }
+      return KeyEvent.getKeyText(code);
     }
 
     private static int keyCodeOf(KeyEvent e) {
