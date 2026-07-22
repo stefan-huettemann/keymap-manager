@@ -1,6 +1,6 @@
 <idea-plugin>
   <id>de.civa.keymap</id>
-  <name>CIVA Keymap</name>
+  <name>Manage Keymap Conflicts</name>
   <vendor email="stefan.huettemann@civa.de">CIVA</vendor>
 
   <description><![CDATA[
@@ -26,8 +26,8 @@
   <actions>
     <action id="de.civa.keymap.ShowConflictReport"
             class="de.civa.keymap.ShowConflictReportAction"
-            text="Review Keymap Conflicts…"
-            description="Review this keymap's shortcut conflicts with macOS and within the keymap">
+            text="Manage Keymap Conflicts…"
+            description="Manage a keymap's shortcut conflicts with macOS and within the keymap">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
     </action>
   </actions>

@@ -1,1 +1,1 @@
-rootProject.name = "CIVA-Keymap"
+rootProject.name = "Manage-Keymap-Conflicts"

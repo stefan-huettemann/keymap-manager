@@ -11,6 +11,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup;
 import com.intellij.openapi.actionSystem.KeyboardShortcut;
 import com.intellij.openapi.actionSystem.Separator;
 import com.intellij.openapi.actionSystem.Shortcut;
+import com.intellij.openapi.actionSystem.ToggleAction;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
 import com.intellij.openapi.fileChooser.FileSaverDialog;
@@ -35,13 +36,15 @@ import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.InplaceButton;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
-import com.intellij.ui.RowIcon;
 import com.intellij.ui.SimpleTextAttributes;
+import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.ui.treeStructure.Tree;
+import com.intellij.util.IconUtil;
 import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
@@ -49,6 +52,8 @@ import org.jdom.Element;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import javax.swing.Action;
+import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.DefaultComboBoxModel;
@@ -64,9 +69,10 @@ import javax.swing.JRadioButton;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
 import javax.swing.ListCellRenderer;
+import javax.swing.Scrollable;
+import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
 import javax.swing.event.DocumentEvent;
-import javax.swing.event.HyperlinkEvent;
 import javax.swing.text.AbstractDocument;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
@@ -83,6 +89,11 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Rectangle;
+import java.awt.Window;
+import java.awt.event.ActionListener;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.io.File;
@@ -103,9 +114,11 @@ import java.util.Set;
  *   <li><b>Keymap selector</b> — a dropdown of every installed keymap, defaulting to the active
  *       one; picking another re-scans and repopulates the whole report.</li>
  *   <li><b>Summary pane</b> — one prominent, icon-tagged status line for the selected keymap.</li>
- *   <li><b>Details pane</b> — a {@link Tree} navigating three sections (conflicts outside this
- *       keymap; the keymap's own conflicts, removable here; double-bound keys, informational) beside
- *       a detail view that explains the selected row and offers the fix links.</li>
+ *   <li><b>Details pane</b> — a {@link Tree} navigating the sections (this keymap's macOS conflicts;
+ *       duplicate shortcuts it introduced; window-switch overlaps IntelliJ ignores; benign
+ *       double-bound keys) beside a detail view that explains the selected row, lists its actions
+ *       interactively (click a name to rebind it, or "Rebind…" to multi-select), and offers the
+ *       fix links.</li>
  * </ol>
  */
 public final class ConflictReportDialog extends DialogWrapper {
@@ -117,7 +130,10 @@ public final class ConflictReportDialog extends DialogWrapper {
   private Keymap active;   // the keymap actually active in the IDE (moves on Activate)
   private ConflictScan scan;
   private Tree tree;
-  private JEditorPane detail;
+  private JPanel detailPanel;         // Swing detail view (replaces the old HTML editor pane)
+  private JBScrollPane detailScroll;  // scroll host, also the width source for wrapped text
+  private Object currentPayload;      // the tree row the detail currently shows (for re-render)
+  private boolean showActionIds;      // gear toggle: show the internal action id next to each name
   private JBLabel summaryText;
   private JBLabel summaryIcon;
   private ComboBox<Keymap> keymapCombo;
@@ -133,13 +149,12 @@ public final class ConflictReportDialog extends DialogWrapper {
     active = KeymapManager.getInstance().getActiveKeymap();
     keymap = active;
     scan = ConflictScan.of(keymap);
-    setTitle("Review Keymap Conflicts");
+    setTitle("Manage Keymap Conflicts");
     setResizable(true);
     init();
   }
 
   // Section titles (used both as node labels and to spot the low-priority, collapsed-by-default ones).
-  private static final String SEC_OUTSIDE = "Conflicts outside this keymap";
   private static final String SEC_KEYMAP = "Keymap conflicts";
   private static final String SEC_IDEA_IGNORED = "Overlaps IntelliJ doesn't flag";
   private static final String SEC_DOUBLE = "Double-bound keys — informational, not conflicts";
@@ -151,8 +166,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   private record Section(String title, int count) {}
   private record Empty(String message) {}
   private record KeymapItem(ConflictScan.ExternalConflict c) {}
-  private record OutsideItem(ConflictScan.ExternalConflict c) {}
-  private record IdeaIgnoredItem(ConflictScan.ExternalConflict c, boolean owned) {}
+  private record IdeaIgnoredItem(ConflictScan.ExternalConflict c) {}
 
   @Override
   protected JComponent createCenterPanel() {
@@ -163,11 +177,23 @@ public final class ConflictReportDialog extends DialogWrapper {
     tree.setCellRenderer(new Renderer());
     tree.addTreeSelectionListener(e -> showDetail(payloadOf(e.getNewLeadSelectionPath())));
 
-    detail = new JEditorPane("text/html", "");
-    detail.setEditable(false);
-    detail.setBorder(JBUI.Borders.empty(8, 10));
-    detail.setBackground(UIUtil.getPanelBackground());
-    detail.addHyperlinkListener(this::onLink);
+    detailPanel = new DetailPanel();
+    detailPanel.setBorder(JBUI.Borders.empty(8, 10));
+    detailPanel.setBackground(UIUtil.getPanelBackground());
+    detailScroll = new JBScrollPane(detailPanel);
+    detailScroll.setBorder(JBUI.Borders.empty());
+    detailScroll.setHorizontalScrollBarPolicy(javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+    // Wrapped-text blocks size to the viewport width, so re-render when the split moves. Guard on an
+    // actual width change so a scrollbar appearing/disappearing can't drive a re-render loop.
+    detailScroll.getViewport().addComponentListener(new ComponentAdapter() {
+      private int lastWidth = -1;
+      @Override public void componentResized(ComponentEvent e) {
+        int w = detailScroll.getViewport().getWidth();
+        if (w == lastWidth) return;
+        lastWidth = w;
+        if (currentPayload != null) showDetail(currentPayload);
+      }
+    });
 
     expandActionableSections();
     selectFirstConflict();
@@ -175,7 +201,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     // Details pane: the tree navigator and its per-row explanation.
     OnePixelSplitter splitter = new OnePixelSplitter(false, 0.44f);
     splitter.setFirstComponent(new JBScrollPane(tree));
-    splitter.setSecondComponent(new JBScrollPane(detail));
+    splitter.setSecondComponent(detailScroll);
 
     // Header stacks the keymap selector above the prominent status summary.
     JPanel header = new JPanel(new BorderLayout());
@@ -219,8 +245,16 @@ public final class ConflictReportDialog extends DialogWrapper {
     keymapCard.add(keymapCombo, "combo");
     keymapCard.add(renameField, "rename");
 
-    // Gear menu, like IDEA's scheme actions. The trailing triangle marks it as a menu button.
-    Icon gearIcon = new RowIcon(AllIcons.General.GearPlain, AllIcons.General.ButtonDropTriangle);
+    // Gear menu, like IDEA's scheme actions. A small drop triangle sits diagonally off the gear's
+    // bottom-right corner — the icon is drawn on a slightly enlarged canvas so the triangle lands in
+    // the corner with a gap instead of overlapping the gear teeth. Marks this as a menu button.
+    Icon gearImg = AllIcons.General.GearPlain;
+    Icon triImg = AllIcons.General.ButtonDropTriangle;
+    int pad = JBUI.scale(4);
+    LayeredIcon gearIcon = new LayeredIcon(2);
+    gearIcon.setIcon(gearImg, 0, 0, 0);
+    gearIcon.setIcon(triImg, 1, gearImg.getIconWidth() + pad - triImg.getIconWidth(),
+                                gearImg.getIconHeight() + pad - triImg.getIconHeight());
     InplaceButton[] gear = new InplaceButton[1];
     gear[0] = new InplaceButton("Keymap actions", gearIcon, e -> showGearMenu(gear[0]));
 
@@ -231,11 +265,22 @@ public final class ConflictReportDialog extends DialogWrapper {
     buttonRow = centered(activate, reset);
     buttonRow.setVisible(false);
 
+    // Help button: a slightly larger, blue "?" pinned to the right of the keymap row.
+    Icon helpIcon = IconUtil.scale(
+      IconUtil.colorize(AllIcons.General.ContextHelp,
+        new JBColor(new Color(0x1E7BFF), new Color(0x4C9DFF)), false, false), null, 1.3f);
+    InplaceButton help = new InplaceButton("What this plugin does", helpIcon, e -> showHelp());
+    JPanel helpHolder = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0));
+    helpHolder.add(help);
+    JPanel keymapRow = new JPanel(new BorderLayout());
+    keymapRow.add(centered(new JBLabel("Keymap:"), keymapCard, gear[0]), BorderLayout.CENTER);
+    keymapRow.add(helpHolder, BorderLayout.EAST);
+
     JPanel selector = new JPanel();
     selector.setLayout(new BoxLayout(selector, BoxLayout.Y_AXIS));
     selector.setBorder(JBUI.Borders.compound(
       JBUI.Borders.customLineBottom(JBColor.border()), JBUI.Borders.empty(8, 12)));
-    selector.add(centered(new JBLabel("Keymap:"), keymapCard, gear[0]));
+    selector.add(keymapRow);
     selector.add(buttonRow);
     return selector;
   }
@@ -250,7 +295,17 @@ public final class ConflictReportDialog extends DialogWrapper {
       menuAction("Duplicate", false, this::duplicateKeymap),
       menuAction("Rename…", true, this::startRename),
       menuAction("Delete…", true, this::deleteKeymap));
-    ActionManager.getInstance().createActionPopupMenu("CivaKeymapGear", group)
+    group.addSeparator();
+    group.add(new ToggleAction("Show Action IDs") {
+      @Override public boolean isSelected(@NotNull AnActionEvent e) { return showActionIds; }
+      @Override public void setSelected(@NotNull AnActionEvent e, boolean state) {
+        showActionIds = state;
+        if (currentPayload != null) showDetail(currentPayload);  // re-render with/without ids
+        tree.repaint();
+      }
+      @Override public ActionUpdateThread getActionUpdateThread() { return ActionUpdateThread.EDT; }
+    });
+    ActionManager.getInstance().createActionPopupMenu("ManageKeymapConflictsGear", group)
       .getComponent().show(anchor, 0, anchor.getHeight());
   }
 
@@ -420,14 +475,16 @@ public final class ConflictReportDialog extends DialogWrapper {
    * one first (and activated), since {@link Keymap#addShortcut}/{@link Keymap#removeShortcut} only
    * take on a modifiable keymap.
    */
-  private void rebindConflict(ConflictScan.ExternalConflict c) {
-    KeyStroke oldFirst = c.stroke();
+  private void rebindActions(KeyStroke oldFirst, List<String> ids) {
+    if (ids.isEmpty()) return;
     String notice = keymap.canModify() ? null
       : "“" + keymap.getPresentableName() + "” is read-only — an editable copy will be created and activated.";
-    ShortcutInputDialog dialog = new ShortcutInputDialog(project, keymap, oldFirst, notice);
+    ShortcutInputDialog dialog = new ShortcutInputDialog(project, keymap, oldFirst, ids, notice);
     if (!dialog.showAndGet()) return;
     KeyStroke newFirst = dialog.getResult();
     if (newFirst == null || newFirst.equals(oldFirst)) return;
+    List<String> moveIds = dialog.selectedIds();  // the user may have unticked some in the dialog
+    if (moveIds.isEmpty()) return;
 
     Keymap target = ensureEditable();
     if (target == null) return;
@@ -435,7 +492,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     // Collect first, mutate second: removeShortcut/addShortcut change what getShortcuts returns.
     record Move(String id, KeyboardShortcut from, KeyboardShortcut to) {}
     List<Move> moves = new ArrayList<>();
-    for (String id : target.getActionIdList()) {
+    for (String id : moveIds) {
       for (Shortcut sc : target.getShortcuts(id)) {
         if (sc instanceof KeyboardShortcut ks && oldFirst.equals(ks.getFirstKeyStroke())) {
           moves.add(new Move(id, ks, new KeyboardShortcut(newFirst, ks.getSecondKeyStroke())));
@@ -469,16 +526,6 @@ public final class ConflictReportDialog extends DialogWrapper {
     String candidate = base + " (editable)";
     for (int n = 2; taken.contains(candidate); n++) candidate = base + " (editable " + n + ")";
     return candidate;
-  }
-
-  private static int countBoundTo(Keymap keymap, KeyStroke firstStroke) {
-    int count = 0;
-    for (String id : keymap.getActionIdList()) {
-      for (Shortcut sc : keymap.getShortcuts(id)) {
-        if (sc instanceof KeyboardShortcut ks && firstStroke.equals(ks.getFirstKeyStroke())) count++;
-      }
-    }
-    return count;
   }
 
   /** Two-column combo cell: keymap name flush left, its source tag flush right. */
@@ -516,38 +563,29 @@ public final class ConflictReportDialog extends DialogWrapper {
   private DefaultMutableTreeNode buildRoot() {
     DefaultMutableTreeNode root = new DefaultMutableTreeNode();
 
-    // Overlaps IntelliJ's keymap tool deliberately ignores (window switching) go in their own
-    // section rather than mixed into the real conflicts; the rest keep their normal grouping.
-    List<ConflictScan.ExternalConflict> outsideNormal = scan.outsideConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
-    List<ConflictScan.ExternalConflict> keymapNormal = scan.keymapConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
+    // Window-switching overlaps IntelliJ's own tool ignores go in a low-priority section; the rest
+    // are this keymap's conflicts (its whole effective set — inherited bindings included).
+    List<ConflictScan.ExternalConflict> normal = scan.keymapConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
+    List<ConflictScan.ExternalConflict> ignored = scan.keymapConflicts.stream().filter(c -> ideaIgnored(c)).toList();
 
-    if (!outsideNormal.isEmpty()) {
-      DefaultMutableTreeNode outside = new DefaultMutableTreeNode(new Section(SEC_OUTSIDE, outsideNormal.size()));
-      for (ConflictScan.ExternalConflict c : outsideNormal) outside.add(new DefaultMutableTreeNode(new OutsideItem(c)));
-      root.add(outside);
-    }
-
-    // The curated SUPPLEMENT entries describe our keymap's specific overlaps, so show them only for it.
-    List<ConflictAdvice.Supplement> supplements = scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.of();
-    DefaultMutableTreeNode keymapNode = new DefaultMutableTreeNode(
-      new Section(SEC_KEYMAP, keymapNormal.size() + supplements.size()));
+    DefaultMutableTreeNode keymapNode = new DefaultMutableTreeNode(new Section(SEC_KEYMAP, normal.size()));
     if (!scan.jbrApiAvailable) {
       keymapNode.add(new DefaultMutableTreeNode(new Empty("macOS scan unavailable on this runtime.")));
     }
-    else if (keymapNormal.isEmpty() && supplements.isEmpty()) {
+    else if (normal.isEmpty()) {
       keymapNode.add(new DefaultMutableTreeNode(new Empty("No conflicts with macOS. Nothing to change.")));
     }
-    for (ConflictScan.ExternalConflict c : keymapNormal) keymapNode.add(new DefaultMutableTreeNode(new KeymapItem(c)));
-    for (ConflictAdvice.Supplement s : supplements) keymapNode.add(new DefaultMutableTreeNode(s));
+    for (ConflictScan.ExternalConflict c : normal) keymapNode.add(new DefaultMutableTreeNode(new KeymapItem(c)));
     root.add(keymapNode);
 
-    // IntelliJ-ignored overlaps, keeping ownership so the detail pane can still offer a cosmetic fix.
-    List<IdeaIgnoredItem> ignored = new ArrayList<>();
-    for (ConflictScan.ExternalConflict c : scan.keymapConflicts) if (ideaIgnored(c)) ignored.add(new IdeaIgnoredItem(c, true));
-    for (ConflictScan.ExternalConflict c : scan.outsideConflicts) if (ideaIgnored(c)) ignored.add(new IdeaIgnoredItem(c, false));
-    if (!ignored.isEmpty()) {
-      DefaultMutableTreeNode node = new DefaultMutableTreeNode(new Section(SEC_IDEA_IGNORED, ignored.size()));
-      for (IdeaIgnoredItem item : ignored) node.add(new DefaultMutableTreeNode(item));
+    // "Overlaps IntelliJ doesn't flag": window-switch overlaps IntelliJ gets first, plus the curated
+    // SUPPLEMENT notes (macOS features the live scan can't see) — all keep working, shown for completeness.
+    List<ConflictAdvice.Supplement> supplements = scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.of();
+    if (!ignored.isEmpty() || !supplements.isEmpty()) {
+      DefaultMutableTreeNode node = new DefaultMutableTreeNode(
+        new Section(SEC_IDEA_IGNORED, ignored.size() + supplements.size()));
+      for (ConflictScan.ExternalConflict c : ignored) node.add(new DefaultMutableTreeNode(new IdeaIgnoredItem(c)));
+      for (ConflictAdvice.Supplement s : supplements) node.add(new DefaultMutableTreeNode(s));
       root.add(node);
     }
 
@@ -608,41 +646,14 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   // ---- links ----------------------------------------------------------------------------------
 
-  private void onLink(HyperlinkEvent e) {
-    if (e.getEventType() != HyperlinkEvent.EventType.ACTIVATED) return;
-    String href = e.getDescription();
-    if ("civa:settings".equals(href)) {
-      openKeymapSettings();
-      return;
-    }
-    ConflictScan.ExternalConflict conflict = selectedConflict();
-    if (conflict == null) return;
-    if ("civa:rebind".equals(href)) {
-      rebindConflict(conflict);
-    }
-    else if ("civa:remove".equals(href)) {
-      removeConflict(conflict);
-    }
-  }
-
-  /** The external conflict backing the selected row, whether it is the keymap's own or from outside. */
-  private ConflictScan.@Nullable ExternalConflict selectedConflict() {
-    Object payload = payloadOf(tree.getSelectionPath());
-    if (payload instanceof KeymapItem ki) return ki.c();
-    if (payload instanceof OutsideItem oi) return oi.c();
-    if (payload instanceof IdeaIgnoredItem ii) return ii.c();
-    return null;
-  }
-
-  /** Clear every matching binding on the conflict's keystroke, copying a read-only keymap first. */
-  private void removeConflict(ConflictScan.ExternalConflict c) {
+  /** Clear every matching binding on {@code first} for the given actions, copying a read-only keymap first. */
+  private void removeShortcutFrom(KeyStroke first, List<String> ids) {
     Keymap target = ensureEditable();
     if (target == null) return;
-    KeyStroke first = c.stroke();
-    for (ConflictScan.ActionRef a : c.actions()) {
-      for (Shortcut sc : target.getShortcuts(a.id())) {
+    for (String id : ids) {
+      for (Shortcut sc : target.getShortcuts(id)) {
         if (sc instanceof KeyboardShortcut ks && first.equals(ks.getFirstKeyStroke())) {
-          target.removeShortcut(a.id(), ks);
+          target.removeShortcut(id, ks);
         }
       }
     }
@@ -655,6 +666,58 @@ public final class ConflictReportDialog extends DialogWrapper {
     close(OK_EXIT_CODE);
     ApplicationManager.getApplication().invokeLater(
       () -> ShowSettingsUtil.getInstance().showSettingsDialog(p, KeymapPanel.class));
+  }
+
+  /** Short "what this is / isn't" explainer, shown from the help (?) button. */
+  private void showHelp() {
+    new HelpDialog().show();
+  }
+
+  /** A non-editable HTML pane that renders in the UI font (not the default serif) and is transparent. */
+  private static JEditorPane htmlPane(String html) {
+    JEditorPane pane = new JEditorPane();
+    pane.setEditable(false);
+    pane.setOpaque(false);
+    pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
+    pane.setContentType("text/html");
+    pane.setFont(UIUtil.getLabelFont());
+    pane.setText(html);
+    pane.setCaretPosition(0);
+    return pane;
+  }
+
+  private final class HelpDialog extends DialogWrapper {
+    HelpDialog() {
+      super(project);
+      setTitle("About Manage Keymap Conflicts");
+      init();
+    }
+
+    @Override
+    protected JComponent createCenterPanel() {
+      JEditorPane pane = htmlPane("<html><body style='margin:0'>"
+        + "<h3 style='margin:0 0 4px 0'>What this plugin does</h3>"
+        + "<p style='margin:0 0 12px 0'>It helps you <b>find and resolve shortcut conflicts</b> in your "
+        + "existing keymaps — overlaps with macOS system shortcuts and duplicate in-keymap bindings. For "
+        + "each conflict you can rebind or remove the shortcut in place, and you can <b>export</b> a keymap "
+        + "to XML (the whole keymap, or just the conflicting / overlapping mappings). It also bundles the "
+        + "<b>MacBook Pro DE</b> keymap as a ready-made starting point.</p>"
+        + "<h3 style='margin:0 0 4px 0'>What this plugin does not</h3>"
+        + "<p style='margin:0'>It is <b>not a replacement for IntelliJ's built-in Keymap editor</b>. "
+        + "Assigning shortcuts to arbitrary actions, browsing the full action list and general keymap "
+        + "editing are done in <b>Settings &rarr; Keymap</b>. This plugin focuses on conflict resolution "
+        + "and export for keymaps that already exist.</p>"
+        + "</body></html>");
+      JBScrollPane scroll = new JBScrollPane(pane);
+      scroll.setBorder(JBUI.Borders.empty(12));  // margin around the text pane
+      scroll.setPreferredSize(new Dimension(JBUI.scale(500), JBUI.scale(250)));
+      return scroll;
+    }
+
+    @Override
+    protected Action[] createActions() {
+      return new Action[]{getOKAction()};
+    }
   }
 
   // ---- summary --------------------------------------------------------------------------------
@@ -676,9 +739,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   private void updateSummary() {
-    int total = scan.keymapConflicts.size() + scan.outsideConflicts.size();
-    long broken = scan.keymapConflicts.stream().filter(c -> needsAttention(c)).count()
-                + scan.outsideConflicts.stream().filter(c -> needsAttention(c)).count();
+    int total = scan.keymapConflicts.size();
+    long broken = scan.keymapConflicts.stream().filter(c -> needsAttention(c)).count();
     String text;
     Icon icon;
     if (!scan.jbrApiAvailable) {
@@ -766,9 +828,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   /** Action ids caught by the macOS scan — the ones needing attention, plus benign overlaps when asked. */
   private Set<String> conflictingActionIds(boolean includeOverlaps) {
     Set<String> ids = new HashSet<>();
-    List<ConflictScan.ExternalConflict> all = new ArrayList<>(scan.keymapConflicts);
-    all.addAll(scan.outsideConflicts);
-    for (ConflictScan.ExternalConflict c : all) {
+    for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
       if (!includeOverlaps && !needsAttention(c)) continue;
       for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
     }
@@ -783,87 +843,229 @@ public final class ConflictReportDialog extends DialogWrapper {
   // ---- detail pane ----------------------------------------------------------------------------
 
   private void showDetail(@Nullable Object payload) {
-    if (payload == null) { detail.setText(""); return; }
-    StringBuilder sb = new StringBuilder("<html><body style='margin:0'>");
+    currentPayload = payload;
+    detailPanel.removeAll();
     if (payload instanceof Section s) {
-      sb.append("<h3 style='margin:0 0 4px 0'>").append(escape(s.title())).append("</h3>")
-        .append(grayBlock(escape(sectionBlurb(s.title()))));
+      addHtml("<h3 style='margin:0 0 4px 0'>" + escape(s.title()) + "</h3>"
+        + grayBlock(escape(sectionBlurb(s.title()))));
     }
     else if (payload instanceof Empty e) {
-      sb.append(grayBlock(escape(e.message())));
+      addHtml(grayBlock(escape(e.message())));
     }
     else if (payload instanceof KeymapItem ki) {
-      appendConflict(sb, ki.c(), true, null);
-    }
-    else if (payload instanceof OutsideItem oi) {
-      appendConflict(sb, oi.c(), false, null);
+      buildConflictDetail(ki.c(), null);
     }
     else if (payload instanceof IdeaIgnoredItem ii) {
-      appendConflict(sb, ii.c(), ii.owned(),
+      buildConflictDetail(ii.c(),
         "IntelliJ's own Keymap settings does <b>not</b> flag this as a conflict — it deliberately "
-        + "ignores window-switching overlaps — so no conflict marker appears for it there. It is "
-        + "listed here only for completeness; the shortcut works. Changing it is an optional, purely "
-        + "cosmetic tidy-up.");
+        + "ignores window-switching overlaps. It is listed here only for completeness; the shortcut "
+        + "works. Changing it is an optional, purely cosmetic tidy-up.");
     }
     else if (payload instanceof ConflictAdvice.Supplement s) {
-      sb.append(keyHead(s.keys()))
-        .append(factsTable(new String[][]{
-          {"IntelliJ", escape(s.ideaSide())},
-          {"macOS", escape(s.macSide())}}))
-        .append(callout("What this means", escape(s.note())));
+      String note = escape(s.note()) + " It isn't an actual shortcut in this keymap — the scan can't "
+        + "see it — so there is nothing here to remove or rebind; it's listed for awareness only.";
+      addHtml(shortcutHeader(s.keys())
+        + factRow("IntelliJ", escape(s.ideaSide()))
+        + factRow("macOS", escape(s.macSide()))
+        + callout("What this means", note));
     }
     else if (payload instanceof ConflictScan.InternalConflict c) {
-      sb.append(keyHead(KeymapUtil.getShortcutText(c.shortcut())))
-        .append(grayBlock(c.actions().size() + " actions use this shortcut. This is not a conflict — "
-          + "IntelliJ picks the right one based on where you are (editor, a tool window, a dialog)."))
-        .append(factsTable(new String[][]{{"Actions", actionList(c.actions())}}));
+      buildInternalDetail(c);
     }
-    sb.append("</body></html>");
-    detail.setText(sb.toString());
-    detail.setCaretPosition(0);
+    detailPanel.revalidate();
+    detailPanel.repaint();
+    SwingUtilities.invokeLater(() -> detailScroll.getVerticalScrollBar().setValue(0));
   }
 
-  private void appendConflict(StringBuilder sb, ConflictScan.ExternalConflict c, boolean owned,
-                              @Nullable String extraNoteHtml) {
-    sb.append(keyHead(KeymapUtil.getKeystrokeText(c.stroke())))
-      .append(statusBadge(c));
-    String[][] rows = owned
-      ? new String[][]{{"IntelliJ action", actionList(c.actions())}, {"macOS", escape(macList(c))}}
-      : new String[][]{{"Used by", actionList(c.actions())},
-                       {"Source", escape(sourceText(c.actions()))},
-                       {"macOS", escape(macList(c))}};
-    sb.append(factsTable(rows));
-    if (!owned) {
-      sb.append(grayBlock("This shortcut comes from another plugin or from IntelliJ itself, not from "
-        + "this keymap. You can still override it here — that edits your editable keymap (creating one "
-        + "if needed), the same as changing it in IntelliJ's Keymap settings."));
-    }
-    sb.append(callout("What to do", escape(c.advice().note())));
-    if (extraNoteHtml != null) {
-      sb.append(callout("Not flagged by IntelliJ", extraNoteHtml));  // already HTML; not escaped
-    }
-    sb.append(links());
+  /** A conflict on one keystroke: facts and status on top, the interactive action list and its fix
+   *  links in the middle, the advice below. */
+  private void buildConflictDetail(ConflictScan.ExternalConflict c, @Nullable String extraNoteHtml) {
+    addHtml(shortcutHeader(KeymapUtil.getKeystrokeText(c.stroke()))
+      + statusBadge(c)
+      + factRow("macOS", escape(macList(c))));
+    addBlock(boldLabel("Actions"));
+    ActionListView list = new ActionListView(c.stroke(), c.actions());
+    detailPanel.add(list);
+    addBlock(linksRow(c.stroke(), c.actions(), list));
+    String bottom = callout("What to do", escape(c.advice().note()));
+    if (extraNoteHtml != null) bottom += callout("Not flagged by IntelliJ", extraNoteHtml);
+    addHtml(bottom);
   }
 
-  private static String links() {
-    String sep = " &nbsp;&nbsp;•&nbsp;&nbsp; ";
-    return "<div style='margin:12px 0 0 0'>"
-         + "<a href='civa:rebind'>Rebind all to…</a>" + sep
-         + "<a href='civa:remove'>Remove this shortcut</a>" + sep
-         + "<a href='civa:settings'>Open Keymap settings</a></div>";
+  /** A key bound to several actions in the keymap; interactive so a stacked one can be moved off. */
+  private void buildInternalDetail(ConflictScan.InternalConflict c) {
+    KeyStroke first = ((KeyboardShortcut) c.shortcut()).getFirstKeyStroke();
+    addHtml(shortcutHeader(KeymapUtil.getShortcutText(c.shortcut())) + internalStatus(c));
+    addBlock(boldLabel("Actions"));
+    ActionListView list = new ActionListView(first, c.actions());
+    detailPanel.add(list);
+    addBlock(linksRow(first, c.actions(), list));
+    addHtml(callout("What to do", escape(internalNote(c))));
   }
 
-  /** Distinct providing plugins for a set of actions, joined; "Unknown" when none could be resolved. */
-  private static String sourceText(List<ConflictScan.ActionRef> actions) {
-    List<String> sources = actions.stream().map(ConflictScan.ActionRef::source)
-      .filter(s -> s != null && !s.isEmpty()).distinct().toList();
-    return sources.isEmpty() ? "Unknown" : String.join(", ", sources);
+  // ---- detail: Swing building blocks ----------------------------------------------------------
+
+  /** Add a component as a left-aligned block, capped so BoxLayout does not stretch it vertically. */
+  private void addBlock(JComponent c) {
+    c.setAlignmentX(Component.LEFT_ALIGNMENT);
+    c.setMaximumSize(new Dimension(Integer.MAX_VALUE, c.getPreferredSize().height));
+    detailPanel.add(c);
+  }
+
+  /**
+   * Add a wrapping HTML text block. A {@link JEditorPane} wraps reliably to a fixed width (unlike a
+   * JLabel), so text no longer runs off the right edge; a right border keeps a margin from the edge.
+   */
+  private void addHtml(String bodyHtml) {
+    int w = detailContentWidth();
+    JEditorPane pane = htmlPane("<html><body style='margin:0'>" + bodyHtml + "</body></html>");
+    pane.setBorder(JBUI.Borders.emptyRight(JBUI.scale(12)));  // keep text off the right edge
+    pane.setSize(new Dimension(w, Short.MAX_VALUE));           // fix width so the wrapped height is right
+    int h = pane.getPreferredSize().height;
+    pane.setPreferredSize(new Dimension(w, h));
+    pane.setMaximumSize(new Dimension(w, h));
+    pane.setAlignmentX(Component.LEFT_ALIGNMENT);
+    detailPanel.add(pane);
+  }
+
+  /** Content width for a detail text block — the viewport minus the panel's left/right insets. */
+  private int detailContentWidth() {
+    int vw = detailScroll != null ? detailScroll.getViewport().getWidth() : 0;
+    int base = vw > JBUI.scale(80) ? vw : JBUI.scale(430);
+    return Math.max(JBUI.scale(140), base - JBUI.scale(20));
+  }
+
+  private JComponent boldLabel(String text) {
+    JBLabel label = new JBLabel(text);
+    label.setFont(label.getFont().deriveFont(Font.BOLD));
+    label.setBorder(JBUI.Borders.empty(8, 0, 2, 0));
+    return label;
+  }
+
+  private String factRow(String label, String valueHtml) {
+    return "<div style='margin:3px 0'><span style='color:" + hex(grayColour()) + "'><b>"
+      + escape(label) + "</b></span>&nbsp;&nbsp;&nbsp;" + valueHtml + "</div>";
+  }
+
+  /** The fix links below the action list, dot-separated. "Rebind…" moves the checked actions (or all,
+   *  if none are checked); "Remove all…" clears the shortcut after a confirmation. */
+  private JComponent linksRow(KeyStroke stroke, List<ConflictScan.ActionRef> actions, ActionListView list) {
+    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
+    row.setOpaque(false);
+    List<String> allIds = actions.stream().map(ConflictScan.ActionRef::id).toList();
+    row.add(new ActionLink("Rebind…", (ActionListener) e -> {
+      List<String> checked = list.checkedIds();
+      rebindActions(stroke, checked.isEmpty() ? allIds : checked);
+    }));
+    row.add(dot());
+    row.add(new ActionLink("Remove…", (ActionListener) e -> {
+      List<String> checked = list.checkedIds();
+      confirmRemove(stroke, checked.isEmpty() ? allIds : checked);
+    }));
+    row.add(dot());
+    row.add(new ActionLink("Open Keymap settings", (ActionListener) e -> openKeymapSettings()));
+    return row;
+  }
+
+  private JComponent dot() {
+    JBLabel d = new JBLabel("•");
+    d.setForeground(grayColour());
+    return d;
+  }
+
+  /** Confirm removal; the dialog's checkbox list lets the user fine-tune which actions to clear. */
+  private void confirmRemove(KeyStroke stroke, List<String> ids) {
+    RemoveConfirmDialog dialog = new RemoveConfirmDialog(stroke, ids);
+    if (dialog.showAndGet()) removeShortcutFrom(stroke, dialog.selectedIds());
+  }
+
+  /** Remove confirmation: a "Show actions" checkbox on the button row reveals an editable pick list. */
+  private final class RemoveConfirmDialog extends DialogWrapper {
+    private final KeyStroke stroke;
+    private final List<String> ids;
+    private ActionCheckboxList checkList;
+
+    RemoveConfirmDialog(KeyStroke stroke, List<String> ids) {
+      super(project);
+      this.stroke = stroke;
+      this.ids = ids;
+      setTitle("Remove Shortcut");
+      init();
+      setResizable(true);  // a resizable window is movable on macOS and can be resized to fit content
+      setOKButtonText("Remove");
+    }
+
+    @Override
+    protected JComponent createCenterPanel() {
+      checkList = new ActionCheckboxList(ids);
+      checkList.setVisible(false);
+
+      JBLabel summary = new JBLabel();
+      summary.setAlignmentX(Component.LEFT_ALIGNMENT);
+      checkList.setOnChange(() -> summary.setText(removeSummary()));
+      summary.setText(removeSummary());
+
+      JPanel stack = new JPanel();
+      stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
+      stack.add(summary);
+      stack.add(checkList);
+
+      JPanel wrap = new JPanel(new BorderLayout());  // NORTH keeps content pinned to the top-left
+      wrap.add(stack, BorderLayout.NORTH);
+      return wrap;
+    }
+
+    private String removeSummary() {
+      int total = ids.size();
+      return "Remove “" + KeymapUtil.getKeystrokeText(stroke) + "” from " + checkList.checkedIds().size()
+        + " of " + total + " action" + (total == 1 ? "" : "s") + " on this key?";
+    }
+
+    @Override
+    protected JComponent createDoNotAskCheckbox() {
+      JCheckBox show = new JCheckBox("Show actions");
+      show.addActionListener(e -> {
+        checkList.setVisible(show.isSelected());
+        resizeToFit(checkList);
+      });
+      return show;
+    }
+
+    List<String> selectedIds() {
+      return checkList.checkedIds();
+    }
+  }
+
+  /** The action's providing plugin when worth showing (not the IDE core, not unknown). */
+  private static @Nullable String notableSource(ConflictScan.ActionRef a) {
+    String s = a.source();
+    return s != null && !s.isEmpty() && !"IDE".equals(s) ? s : null;
+  }
+
+  private static @Nullable String notableSources(List<ConflictScan.ActionRef> actions) {
+    List<String> sources = actions.stream().map(ConflictReportDialog::notableSource)
+      .filter(s -> s != null).distinct().toList();
+    return sources.isEmpty() ? null : String.join(", ", sources);
+  }
+
+  private String internalStatus(ConflictScan.InternalConflict c) {
+    return "<div style='margin:0 0 8px 0; color:" + hex(grayColour()) + "'>"
+      + c.actions().size() + " actions use this shortcut.</div>";
+  }
+
+  private static String internalNote(ConflictScan.InternalConflict c) {
+    return "This is usually not a conflict — IntelliJ picks the action that fits where you are (the "
+      + "editor, a tool window, a dialog). IntelliJ's own Keymap tool treats these the same way and "
+      + "doesn't flag them. It only breaks if two can fire in the same place; rebind or remove one "
+      + "here if so.";
   }
 
   // ---- detail formatting helpers --------------------------------------------------------------
 
-  private static String keyHead(String key) {
-    return "<div style='font-size:15pt; font-weight:bold; margin:0 0 4px 0'>" + escape(key) + "</div>";
+  /** The "Shortcut: ^C" header — label and keystroke on one line, the key a touch larger. */
+  private static String shortcutHeader(String key) {
+    return "<div style='font-weight:bold; margin:0 0 6px 0'>Shortcut:&nbsp;&nbsp;"
+      + "<span style='font-size:13pt'>" + escape(key) + "</span></div>";
   }
 
   private String statusBadge(ConflictScan.ExternalConflict c) {
@@ -872,16 +1074,6 @@ public final class ConflictReportDialog extends DialogWrapper {
     String glyph = ok ? "&#10004;" : "&#9888;";  // ✔ / ⚠
     return "<div style='margin:0 0 8px 0; font-weight:bold; color:" + colour + "'>"
       + glyph + "&nbsp; " + escape(status(c)) + "</div>";
-  }
-
-  private String factsTable(String[][] rows) {
-    StringBuilder t = new StringBuilder("<table cellpadding='2' cellspacing='0' style='margin:2px 0'>");
-    for (String[] r : rows) {
-      t.append("<tr><td valign='top'><span style='color:").append(hex(grayColour()))
-        .append("'><b>").append(escape(r[0])).append("</b></span>&nbsp;&nbsp;&nbsp;</td>")
-        .append("<td valign='top'>").append(r[1]).append("</td></tr>");
-    }
-    return t.append("</table>").toString();
   }
 
   private String callout(String title, String bodyHtml) {
@@ -902,7 +1094,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   private static Color warnColour() {
-    return new JBColor(new Color(0xB3261E), new Color(0xF2B8B5));
+    // Standard warning amber: a dark goldenrod that stays legible on a light panel, a soft yellow on dark.
+    return new JBColor(new Color(0x8A6D00), new Color(0xF2C55C));
   }
 
   private static Color okColour() {
@@ -918,20 +1111,16 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   private static String sectionBlurb(String title) {
-    if (title.startsWith("Conflicts outside")) {
-      return "Shortcuts from other plugins or from IntelliJ that sit on a key macOS also uses. "
-        + "They aren't part of this keymap, so they can't be changed here — but this explains why "
-        + "a shortcut may not be working, and where to change it.";
-    }
-    if (title.startsWith("Keymap conflicts")) {
-      return "This keymap's own shortcuts that overlap a macOS system shortcut. Select one to see "
-        + "whether it still works and to remove or change it.";
+    if (title.equals(SEC_KEYMAP)) {
+      return "Shortcuts in this keymap that overlap a macOS system shortcut. Select one to see whether "
+        + "it still works and to rebind or remove it. Bindings that come from another plugin or the IDE "
+        + "core are tagged with their source; you can change them here just the same.";
     }
     if (title.equals(SEC_IDEA_IGNORED)) {
-      return "These shortcuts sit on a key macOS also uses for switching windows, but IntelliJ gets "
-        + "it first while its window is in front, so they keep working. IntelliJ's own Keymap settings "
-        + "deliberately ignores these overlaps and shows no conflict marker for them — they are listed "
-        + "here only for completeness. Selecting one still lets you change it, if you prefer.";
+      return "Overlaps IntelliJ's own Keymap tool doesn't flag: keys macOS also uses for switching "
+        + "windows (IntelliJ gets them first while it's in front), plus a couple of macOS features the "
+        + "live scan can't see (the Emoji viewer, Dictation). All keep working and are listed for "
+        + "completeness. The window-switch ones can still be changed; the scan-invisible notes cannot.";
     }
     return "One shortcut bound to several actions inside the keymap. Not a conflict — IntelliJ "
       + "picks the action that fits where you are. Shown for reference only.";
@@ -941,25 +1130,162 @@ public final class ConflictReportDialog extends DialogWrapper {
     return String.join("; ", c.macOs().stream().map(ConflictScan.SystemShortcut::label).distinct().toList());
   }
 
-  private static String actionList(List<ConflictScan.ActionRef> actions) {
-    StringBuilder sb = new StringBuilder();
-    for (ConflictScan.ActionRef a : actions) {
-      if (sb.length() > 0) sb.append("<br>");
-      sb.append("<b>").append(escape(a.label())).append("</b>");
-      if (a.displayName() != null && !a.displayName().isEmpty()) {
-        sb.append(" <span style='color:gray'>").append(escape(a.id())).append("</span>");
-      }
-    }
-    return sb.toString();
-  }
-
   private static String escape(String s) {
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+  }
+
+  /** Resize the hosting dialog to fit its current content height — grows on "(show)", shrinks on "(hide)". */
+  private static void resizeToFit(Component c) {
+    Window win = SwingUtilities.getWindowAncestor(c);
+    if (win == null) return;
+    win.setMinimumSize(null);  // drop any floor the peer set at first display, so we can shrink
+    win.invalidate();
+    win.setSize(win.getWidth(), win.getPreferredSize().height);
+    win.validate();
+  }
+
+  /** An editable checkbox list of actions — all ticked initially; {@link #checkedIds()} gives the picks. */
+  private static final class ActionCheckboxList extends JPanel {
+    private final List<String> ids;
+    private final List<JCheckBox> boxes = new ArrayList<>();
+    private Runnable onChange;
+
+    ActionCheckboxList(java.util.Collection<String> actionIds) {
+      setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+      setOpaque(false);
+      setBorder(JBUI.Borders.empty(4, 6, 0, 0));
+      setAlignmentX(Component.LEFT_ALIGNMENT);
+      ActionManager am = ActionManager.getInstance();
+      ids = actionIds.stream().sorted().toList();
+      for (String id : ids) {
+        AnAction a = am.getAction(id);
+        String text = a == null ? null : a.getTemplateText();
+        JCheckBox cb = new JCheckBox(text != null && !text.isBlank() ? text : id, true);
+        cb.setOpaque(false);
+        cb.setAlignmentX(Component.LEFT_ALIGNMENT);
+        cb.addItemListener(e -> { if (onChange != null) onChange.run(); });
+        boxes.add(cb);
+        add(cb);
+      }
+    }
+
+    void setOnChange(Runnable r) { onChange = r; }
+
+    List<String> checkedIds() {
+      List<String> result = new ArrayList<>();
+      for (int i = 0; i < ids.size(); i++) if (boxes.get(i).isSelected()) result.add(ids.get(i));
+      return result;
+    }
   }
 
   @Override
   protected com.intellij.openapi.ui.DialogWrapper.@Nullable DialogStyle getStyle() {
     return DialogStyle.COMPACT;
+  }
+
+  /** Detail-pane host that never grows wider than the viewport, so wrapped text can't be clipped. */
+  private static final class DetailPanel extends JPanel implements Scrollable {
+    DetailPanel() { setLayout(new BoxLayout(this, BoxLayout.Y_AXIS)); }
+    @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+    @Override public int getScrollableUnitIncrement(Rectangle r, int orientation, int direction) { return JBUI.scale(16); }
+    @Override public int getScrollableBlockIncrement(Rectangle r, int orientation, int direction) { return r.height; }
+    @Override public boolean getScrollableTracksViewportWidth() { return true; }
+    @Override public boolean getScrollableTracksViewportHeight() { return false; }
+  }
+
+  // ---- interactive action list ----------------------------------------------------------------
+
+  /**
+   * The actions on one keystroke, shown as a checkbox list. Each action name is a link: hovering
+   * highlights it and shows the action's description as a tooltip, clicking rebinds that one action.
+   * The checkboxes feed the links-row "Rebind…" (which moves every checked action at once); the top
+   * "Select all" link toggles to "Deselect all" once anything is checked.
+   */
+  private final class ActionListView extends JPanel {
+    private final KeyStroke stroke;
+    private final List<ConflictScan.ActionRef> actions;
+    private final List<JCheckBox> checks = new ArrayList<>();
+    private ActionLink selectToggle;
+
+    ActionListView(KeyStroke stroke, List<ConflictScan.ActionRef> actions) {
+      this.stroke = stroke;
+      this.actions = actions;
+      setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+      setOpaque(false);
+      setAlignmentX(Component.LEFT_ALIGNMENT);
+      build();
+    }
+
+    @Override
+    public Dimension getMaximumSize() {
+      return new Dimension(Integer.MAX_VALUE, getPreferredSize().height);
+    }
+
+    private void build() {
+      JPanel top = actionRow();
+      selectToggle = new ActionLink("Select all", (ActionListener) e -> toggleSelectAll());
+      top.add(selectToggle);
+      add(top);
+      for (ConflictScan.ActionRef a : actions) {
+        JPanel r = actionRow();
+        JCheckBox cb = new JCheckBox();
+        cb.setOpaque(false);
+        cb.addItemListener(e -> updateToggleText());
+        checks.add(cb);
+        r.add(cb);
+        r.add(actionLabel(a));
+        if (showActionIds) {
+          JBLabel id = new JBLabel(a.id());
+          id.setForeground(grayColour());
+          r.add(id);
+        }
+        String src = notableSource(a);
+        if (src != null) {
+          JBLabel s = new JBLabel("(" + src + ")");
+          s.setForeground(grayColour());
+          r.add(s);
+        }
+        add(r);
+      }
+      updateToggleText();
+    }
+
+    /** A clickable action name: highlighted on hover (the link), its tooltip the action's description. */
+    private ActionLink actionLabel(ConflictScan.ActionRef a) {
+      ActionLink link = new ActionLink(a.label(), (ActionListener) e -> rebindActions(stroke, List.of(a.id())));
+      String desc = a.description() != null && !a.description().isBlank() ? a.description() : a.id();
+      link.setToolTipText(desc);
+      return link;
+    }
+
+    private void toggleSelectAll() {
+      boolean select = !anySelected();
+      for (JCheckBox cb : checks) cb.setSelected(select);
+    }
+
+    private boolean anySelected() {
+      for (JCheckBox cb : checks) if (cb.isSelected()) return true;
+      return false;
+    }
+
+    private void updateToggleText() {
+      selectToggle.setText(anySelected() ? "Deselect all" : "Select all");
+    }
+
+    List<String> checkedIds() {
+      List<String> ids = new ArrayList<>();
+      for (int i = 0; i < actions.size(); i++) {
+        if (checks.get(i).isSelected()) ids.add(actions.get(i).id());
+      }
+      return ids;
+    }
+
+    private JPanel actionRow() {
+      JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(1)));
+      p.setOpaque(false);
+      p.setAlignmentX(Component.LEFT_ALIGNMENT);
+      return p;
+    }
   }
 
   // ---- renderer -------------------------------------------------------------------------------
@@ -978,13 +1304,10 @@ public final class ConflictReportDialog extends DialogWrapper {
         append(e.message(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
       }
       else if (p instanceof KeymapItem ki) {
-        renderConflict(ki.c(), true);
-      }
-      else if (p instanceof OutsideItem oi) {
-        renderConflict(oi.c(), false);
+        renderConflict(ki.c());
       }
       else if (p instanceof IdeaIgnoredItem ii) {
-        renderConflict(ii.c(), ii.owned());
+        renderConflict(ii.c());
       }
       else if (p instanceof ConflictAdvice.Supplement s) {
         setIcon(AllIcons.General.Information);
@@ -992,21 +1315,21 @@ public final class ConflictReportDialog extends DialogWrapper {
         append("  " + s.macSide(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
       }
       else if (p instanceof ConflictScan.InternalConflict c) {
+        setIcon(AllIcons.General.Information);
         append(KeymapUtil.getShortcutText(c.shortcut()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
         append("  " + c.actions().size() + " actions", SimpleTextAttributes.GRAYED_ATTRIBUTES);
       }
     }
 
-    private void renderConflict(ConflictScan.ExternalConflict c, boolean owned) {
+    private void renderConflict(ConflictScan.ExternalConflict c) {
       setIcon(needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information);
       append(KeymapUtil.getKeystrokeText(c.stroke()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
       List<ConflictScan.ActionRef> a = c.actions();
       String suffix = a.isEmpty() ? "" : a.get(0).label() + (a.size() > 1 ? " +" + (a.size() - 1) : "");
       append("  " + suffix, SimpleTextAttributes.GRAYED_ATTRIBUTES);
-      // For bindings not from this keymap, show where they come from. JTree cells are sized to their
-      // content (no free space to the right), so the tag is appended inline rather than right-aligned;
-      // the detail pane shows it as its own row.
-      String source = owned ? null : sourceText(a);
+      // Tag bindings coming from another plugin or the IDE core (JTree cells size to content, so the
+      // tag is appended inline rather than right-aligned; the detail pane shows it per action).
+      String source = notableSources(a);
       if (source != null) append("   (" + source + ")", SimpleTextAttributes.GRAYED_ATTRIBUTES);
     }
   }
@@ -1032,6 +1355,7 @@ public final class ConflictReportDialog extends DialogWrapper {
 
     private final Keymap keymap;
     private final KeyStroke original;
+    private final Set<String> movingIds;   // actions being moved off `original` (excluded from the clash check)
     private final int affected;
     private final @Nullable String notice;
     private final @Nullable Map<KeyStroke, List<ConflictScan.SystemShortcut>> system = ConflictScan.systemShortcuts();
@@ -1047,15 +1371,19 @@ public final class ConflictReportDialog extends DialogWrapper {
     private int keyCode = KeyEvent.VK_UNDEFINED;  // the chosen key; the source of truth for build()
     private boolean settingText;                  // true while the field is set programmatically
     private KeyStroke result;
+    private ActionCheckboxList checkList;         // editable pick list; shown only when "Show actions" is ticked
 
-    ShortcutInputDialog(@Nullable Project project, Keymap keymap, KeyStroke original, @Nullable String notice) {
+    ShortcutInputDialog(@Nullable Project project, Keymap keymap, KeyStroke original,
+                        List<String> movingIds, @Nullable String notice) {
       super(project);
       this.keymap = keymap;
       this.original = original;
-      this.affected = countBoundTo(keymap, original);
+      this.movingIds = new HashSet<>(movingIds);
+      this.affected = movingIds.size();
       this.notice = notice;
       setTitle("Rebind Shortcut");
       init();
+      setResizable(true);  // a resizable window is movable on macOS and can be resized to fit content
       prefill();
     }
 
@@ -1110,19 +1438,29 @@ public final class ConflictReportDialog extends DialogWrapper {
         keyRow.add(radio);
       }
 
+      checkList = new ActionCheckboxList(movingIds);
+      checkList.setVisible(false);
+      JBLabel movesCount = new JBLabel();
+      checkList.setOnChange(() -> movesCount.setText(
+        checkList.checkedIds().size() + " of " + affected + " mapping(s) on this key will move."));
+      movesCount.setText(affected + " of " + affected + " mapping(s) on this key will move.");
+
       FormBuilder form = FormBuilder.createFormBuilder()
         .addLabeledComponent("Current:", new JBLabel(KeymapUtil.getKeystrokeText(original)))
         .addLabeledComponent("Key:", keyRow)
         .addLabeledComponent("Modifiers:", modifiers)
         .addLabeledComponent("New:", preview)
         .addComponent(status)
-        .addComponent(new JBLabel(affected + " mapping(s) on this key will move."));
+        .addComponent(movesCount)
+        .addComponent(checkList);
       if (notice != null) {
         JBLabel note = new JBLabel(notice);
         note.setForeground(UIUtil.getContextHelpForeground());
         form.addComponent(note);
       }
-      return form.getPanel();
+      JPanel wrap = new JPanel(new BorderLayout());  // NORTH keeps the form pinned to the top-left
+      wrap.add(form.getPanel(), BorderLayout.NORTH);
+      return wrap;
     }
 
     /** Grab a modifier combo (e.g. ⌃X, ⌃↩): set all modifier boxes and the key from the event. */
@@ -1190,6 +1528,12 @@ public final class ConflictReportDialog extends DialogWrapper {
         status.setText(" ");
         return;
       }
+      if (isBarePrintable()) {
+        status.setText("⚠ Plain “" + displayFor(keyCode) + "” with no modifier — fires whenever you type it. "
+          + "Allowed (IDEA permits it), but usually unintended.");
+        status.setForeground(warnColour());
+        return;
+      }
       List<String> clash = keymapCollisions(ks);
       if (!clash.isEmpty()) {
         status.setText("⚠ Already used in this keymap by " + actionName(clash.get(0))
@@ -1221,10 +1565,9 @@ public final class ConflictReportDialog extends DialogWrapper {
 
     /** Actions already bound to {@code ks} in this keymap, minus the ones being moved off the old key. */
     private List<String> keymapCollisions(KeyStroke ks) {
-      Set<String> moving = new HashSet<>(List.of(keymap.getActionIds(original)));
       List<String> hits = new ArrayList<>();
       for (String id : keymap.getActionIds(ks)) {
-        if (!moving.contains(id)) hits.add(id);
+        if (!movingIds.contains(id)) hits.add(id);
       }
       return hits;
     }
@@ -1244,6 +1587,33 @@ public final class ConflictReportDialog extends DialogWrapper {
       return KeyStroke.getKeyStroke(keyCode, mods);
     }
 
+    private boolean noModifiers() {
+      return !control.isSelected() && !option.isSelected() && !shift.isSelected() && !command.isSelected();
+    }
+
+    /**
+     * True when the assembled shortcut is a single printable character with no modifier (v, c, 1, -,
+     * an umlaut, …). Pressing it types the character rather than triggering a command in most
+     * contexts. IDEA's own keymap allows this, so it only drives a warning — {@link #doOKAction} still
+     * accepts it.
+     */
+    private boolean isBarePrintable() {
+      return keyCode != KeyEvent.VK_UNDEFINED && noModifiers() && isPrintableKeyCode(keyCode);
+    }
+
+    private static boolean isPrintableKeyCode(int code) {
+      if (code >= KeyEvent.VK_0 && code <= KeyEvent.VK_9) return true;
+      if (code >= KeyEvent.VK_A && code <= KeyEvent.VK_Z) return true;
+      if (code > 0xFFFF) return true;  // extended char codes (Ä Ö Ü ß …)
+      return switch (code) {
+        case KeyEvent.VK_MINUS, KeyEvent.VK_EQUALS, KeyEvent.VK_PLUS, KeyEvent.VK_COMMA,
+             KeyEvent.VK_PERIOD, KeyEvent.VK_SLASH, KeyEvent.VK_SEMICOLON, KeyEvent.VK_QUOTE,
+             KeyEvent.VK_BACK_QUOTE, KeyEvent.VK_OPEN_BRACKET, KeyEvent.VK_CLOSE_BRACKET,
+             KeyEvent.VK_BACK_SLASH -> true;
+        default -> false;
+      };
+    }
+
     @Override
     protected void doOKAction() {
       KeyStroke ks = build();
@@ -1254,6 +1624,21 @@ public final class ConflictReportDialog extends DialogWrapper {
 
     @Nullable KeyStroke getResult() {
       return result;
+    }
+
+    /** The actions the user left ticked — the set that actually moves. */
+    List<String> selectedIds() {
+      return checkList != null ? checkList.checkedIds() : new ArrayList<>(movingIds);
+    }
+
+    @Override
+    protected JComponent createDoNotAskCheckbox() {
+      JCheckBox show = new JCheckBox("Show actions");
+      show.addActionListener(e -> {
+        checkList.setVisible(show.isSelected());
+        resizeToFit(checkList);
+      });
+      return show;
     }
 
     private static boolean isModifierKey(int code) {

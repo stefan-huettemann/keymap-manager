@@ -1,6 +1,6 @@
 <keymap name="MacBook Pro DE" parent="Mac OS X 10.5+" version="1" disable-mnemonics="true">
   <action id="$Copy">
-    <keyboard-shortcut first-keystroke="control C"/>
+    <keyboard-shortcut first-keystroke="meta C"/>
   </action>
   <action id="$Cut">
     <keyboard-shortcut first-keystroke="control X"/>
@@ -183,7 +183,7 @@
     <keyboard-shortcut first-keystroke="ENTER"/>
   </action>
   <action id="Console.Execute.Multiline">
-    <keyboard-shortcut first-keystroke="control ENTER"/>
+    <keyboard-shortcut first-keystroke="meta alt ENTER"/>
   </action>
   <action id="Console.History.Browse">
     <keyboard-shortcut first-keystroke="control alt E"/>
@@ -239,7 +239,7 @@
     <keyboard-shortcut first-keystroke="ENTER"/>
   </action>
   <action id="DirDiffMenu.SynchronizeDiff.All">
-    <keyboard-shortcut first-keystroke="control ENTER"/>
+    <keyboard-shortcut first-keystroke="meta alt ENTER"/>
   </action>
   <action id="DumpLookupElementWeights">
     <keyboard-shortcut first-keystroke="control alt shift W"/>
@@ -424,7 +424,6 @@
   </action>
   <action id="EditorRight">
     <keyboard-shortcut first-keystroke="RIGHT"/>
-    <keyboard-shortcut first-keystroke="control F"/>
   </action>
   <action id="EditorRightWithSelection">
     <keyboard-shortcut first-keystroke="shift RIGHT"/>
@@ -441,7 +440,7 @@
     <keyboard-shortcut first-keystroke="alt shift 6" second-keystroke="T"/>
   </action>
   <action id="EditorSplitLine">
-    <keyboard-shortcut first-keystroke="control ENTER"/>
+    <keyboard-shortcut first-keystroke="meta alt ENTER"/>
   </action>
   <action id="EditorStartNewLine">
     <keyboard-shortcut first-keystroke="shift ENTER"/>
@@ -636,7 +635,7 @@
   </action>
   <action id="Generate">
     <keyboard-shortcut first-keystroke="meta N"/>
-    <keyboard-shortcut first-keystroke="control ENTER"/>
+    <keyboard-shortcut first-keystroke="meta alt ENTER"/>
   </action>
   <action id="Git.CreateNewBranch">
     <keyboard-shortcut first-keystroke="control alt N"/>
@@ -797,7 +796,7 @@
     <keyboard-shortcut first-keystroke="control shift NUMBER_SIGN"/>
   </action>
   <action id="MethodDown">
-    <keyboard-shortcut first-keystroke="ctrl shift DOWN"/>
+    <keyboard-shortcut first-keystroke="ctrl meta DOWN"/>
   </action>
   <action id="MethodHierarchy">
     <keyboard-shortcut first-keystroke="control shift H"/>
@@ -809,11 +808,9 @@
     <keyboard-shortcut first-keystroke="alt UP"/>
   </action>
   <action id="MethodUp">
-    <keyboard-shortcut first-keystroke="ctrl shift UP"/>
+    <keyboard-shortcut first-keystroke="ctrl meta UP"/>
   </action>
-  <action id="MinimizeCurrentWindow">
-    <keyboard-shortcut first-keystroke="meta M"/>
-  </action>
+  <action id="MinimizeCurrentWindow"/>
   <action id="Move">
     <keyboard-shortcut first-keystroke="F6"/>
   </action>
@@ -830,14 +827,14 @@
     <keyboard-shortcut first-keystroke="alt shift UP"/>
   </action>
   <action id="MoveStatementDown">
-    <keyboard-shortcut first-keystroke="control shift DOWN"/>
+    <keyboard-shortcut first-keystroke="ctrl meta DOWN"/>
   </action>
   <action id="MoveStatementUp">
-    <keyboard-shortcut first-keystroke="control shift UP"/>
+    <keyboard-shortcut first-keystroke="ctrl meta UP"/>
   </action>
   <action id="NewElement">
     <keyboard-shortcut first-keystroke="meta N"/>
-    <keyboard-shortcut first-keystroke="control ENTER"/>
+    <keyboard-shortcut first-keystroke="meta alt ENTER"/>
   </action>
   <action id="NewElementSamePlace">
     <keyboard-shortcut first-keystroke="control alt N"/>
@@ -958,7 +955,7 @@
     <keyboard-shortcut first-keystroke="shift F6"/>
   </action>
   <action id="Replace">
-    <keyboard-shortcut first-keystroke="control R"/>
+    <keyboard-shortcut first-keystroke="ctrl meta R"/>
   </action>
   <action id="ReplaceInPath">
     <keyboard-shortcut first-keystroke="meta shift R"/>
@@ -993,7 +990,7 @@
     <keyboard-shortcut first-keystroke="F9"/>
   </action>
   <action id="Run">
-    <keyboard-shortcut first-keystroke="control R"/>
+    <keyboard-shortcut first-keystroke="ctrl meta R"/>
   </action>
   <action id="RunAnything">
     <keyboard-gesture-shortcut keystroke="ctrl control" modifier="dblClick"/>
@@ -1070,7 +1067,7 @@
     <keyboard-shortcut first-keystroke="meta F3"/>
   </action>
   <action id="ShowContent">
-    <keyboard-shortcut first-keystroke="control shift DOWN"/>
+    <keyboard-shortcut first-keystroke="ctrl meta DOWN"/>
   </action>
   <action id="ShowErrorDescription">
     <keyboard-shortcut first-keystroke="meta F1"/>
@@ -1123,7 +1120,7 @@
     <keyboard-shortcut first-keystroke="alt shift ENTER"/>
   </action>
   <action id="SplitChooser.Duplicate">
-    <keyboard-shortcut first-keystroke="ctrl ENTER"/>
+    <keyboard-shortcut first-keystroke="meta alt ENTER"/>
   </action>
   <action id="SplitChooser.NextWindow">
     <keyboard-shortcut first-keystroke="TAB"/>
@@ -1179,15 +1176,15 @@
   <action id="Synchronize">
     <keyboard-shortcut first-keystroke="control alt Y"/>
   </action>
+  <action id="Terminal.ClearPrompt"/>
+  <action id="Terminal.SearchInCommandHistory"/>
   <action id="TestGestureAction">
     <keyboard-gesture-shortcut keystroke="meta 1" modifier="dblClick"/>
   </action>
   <action id="TextSearchAction">
     <keyboard-shortcut first-keystroke="control shift alt E"/>
   </action>
-  <action id="TodoViewGroupByFlattenPackage">
-    <keyboard-shortcut first-keystroke="control F"/>
-  </action>
+  <action id="TodoViewGroupByFlattenPackage"/>
   <action id="TodoViewGroupByShowModules">
     <keyboard-shortcut first-keystroke="control M"/>
   </action>
@@ -1263,7 +1260,7 @@
     <keyboard-shortcut first-keystroke="control I"/>
   </action>
   <action id="UsageFiltering.ReadAccess">
-    <keyboard-shortcut first-keystroke="control R"/>
+    <keyboard-shortcut first-keystroke="ctrl meta R"/>
   </action>
   <action id="UsageFiltering.WriteAccess">
     <keyboard-shortcut first-keystroke="control W"/>
@@ -1290,6 +1287,7 @@
     <keyboard-shortcut first-keystroke="shift BACK_SPACE"/>
   </action>
   <action id="ValidateXml"/>
+  <action id="Vcs.CombinedDiff.ToggleCollapseBlock"/>
   <action id="Vcs.MoveChangedLinesToChangelist">
     <keyboard-shortcut first-keystroke="meta shift M"/>
   </action>
@@ -1318,7 +1316,7 @@
     <keyboard-shortcut first-keystroke="control shift F8"/>
   </action>
   <action id="ViewSource">
-    <keyboard-shortcut first-keystroke="control ENTER"/>
+    <keyboard-shortcut first-keystroke="meta alt ENTER"/>
   </action>
   <action id="XDebugger.AttachToProcess">
     <keyboard-shortcut first-keystroke="alt shift F5"/>

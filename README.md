@@ -4,17 +4,18 @@ Development workspace for JetBrains IDE plugins.
 
 ## Plugins
 
-### CIVA Keymap (`keymap-plugin/`)
+### Manage Keymap Conflicts (`keymap-plugin/`)
 
-Resource-only plugin that bundles the **MacBook Pro DE** keymap for all JetBrains
-IDEs on macOS. Motivation: the stock keymaps are designed for US ANSI keyboards,
-and a significant number of their shortcuts are physically unpressable on a
-German (T1) layout — this keymap replaces them with reachable bindings.
+Plugin for **managing keymap shortcut conflicts** on macOS — a live, explained report of
+overlaps with macOS system shortcuts and duplicate in-keymap bindings, with in-place
+rebind/remove and XML export. It also bundles the **MacBook Pro DE** keymap as a ready-made
+starting point: the stock keymaps target US ANSI keyboards, and many of their shortcuts are
+physically unpressable on a German (T1) layout — this keymap replaces them with reachable bindings.
 
 ```bash
 cd keymap-plugin
 ./gradlew buildPlugin
-# → build/distributions/CIVA-Keymap-1.0.0.zip
+# → build/distributions/Manage-Keymap-Conflicts-1.5.0.zip
 ```
 
 Installation and settings-sync setup: [`keymap-plugin/INSTALL.md`](keymap-plugin/INSTALL.md)
@@ -23,7 +24,7 @@ Installation and settings-sync setup: [`keymap-plugin/INSTALL.md`](keymap-plugin
 
 | Path | Content |
 |---|---|
-| `keymap-plugin/` | Gradle plugin project (plugin.xml + bundled keymap, no code) |
+| `keymap-plugin/` | Gradle plugin project (plugin.xml + bundled keymap + conflict-report code) |
 | `keymaps/MacBook Pro DE.xml` | Keymap source of truth; copy into the plugin resources before building |
 | `keymaps/$default.xml`, `keymaps/Mac OS X 10.5+.xml` | Platform reference keymaps, sorted for diffing |
 | `keymaps/keys.md` | Audit of all keys used, with German-layout reachability |

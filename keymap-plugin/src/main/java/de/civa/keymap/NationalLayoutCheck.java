@@ -65,7 +65,7 @@ public final class NationalLayoutCheck implements KeymapManagerListener, AppLife
       .createNotification(
         layoutOff
           ? "MacBook Pro DE keymap needs national keyboard layout support"
-          : "Review keymap conflicts",
+          : "Manage keymap conflicts",
         layoutOff
           ? "This keymap binds keys of the German layout (Ä Ö Ü ß + # <), which only work while " +
             "\"Use national keyboard layouts for shortcuts\" is enabled (Settings → Keymap). " +
@@ -77,7 +77,7 @@ public final class NationalLayoutCheck implements KeymapManagerListener, AppLife
     if (layoutOff) {
       notification.addAction(NotificationAction.createSimple("Enable and restart", () -> enableAndRestart(notification)));
     }
-    notification.addAction(new NotificationAction("Review keymap conflicts") {
+    notification.addAction(new NotificationAction("Manage keymap conflicts") {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification n) {
         new ConflictReportDialog(e.getProject()).show();
