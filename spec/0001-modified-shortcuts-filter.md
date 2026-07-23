@@ -1,6 +1,6 @@
 # 0001 — Filter / view for modified shortcuts
 
-- **Status:** In progress — **Phases 1–2 implemented 2026-07-23** (extend the plugin; scope/name framing in [0002](0002-plugin-scope-and-name.md))
+- **Status:** In progress — **Phases 1–3 implemented 2026-07-23** (extend the plugin; scope/name framing in [0002](0002-plugin-scope-and-name.md))
 - **Source:** [IJPL-228176 — "Add filter for modified shortcuts in Keymap settings"](https://youtrack.jetbrains.com/issue/IJPL-228176)
 - **Date:** 2026-07-23
 
@@ -112,7 +112,7 @@ window. Phased so each step is shippable on its own.
 - Empty-state text when the keymap declares nothing of its own (e.g. a fresh
   copy or `$default`).
 
-### Phase 3 — revert to default (R3)
+### Phase 3 — revert to default (R3) — ✅ done 2026-07-23
 - New operation distinct from the existing **Remove** (which clears a binding to
   *empty*). Revert must **drop the own-declaration** so the parent binding
   re-inherits — for a `KeymapImpl`, clearing the action's own shortcuts and
@@ -205,9 +205,9 @@ and a possible plugin rename — tracked in
 [0002](0002-plugin-scope-and-name.md). Implementation is not blocked on the name;
 Phases 1–2 can start once 0002's scope statement is agreed.
 
-## 7. Implementation notes (Phases 1–2, 2026-07-23)
+## 7. Implementation notes (Phases 1–3, 2026-07-23)
 
-Landed as a read-only audit view; no revert yet (that is Phase 3).
+Landed as an audit view with per-action revert.
 
 - **`ConflictScan`** — new `record ModifiedBinding(ActionRef action, List<Shortcut> shortcuts)`
   and a `modified` list on the scan, computed in `modifiedBindings(keymap)` from
@@ -221,7 +221,21 @@ Landed as a read-only audit view; no revert yet (that is Phase 3).
     `Renderer.renderModified` and `buildModifiedDetail` render the rows/detail; a
     **"Show modified only"** gear toggle (`showModifiedOnly` + `rebuildTree()`) filters to
     just this section. Expansion/selection generalized via `shouldExpand` / `selectFirstRow`.
+  - *Phase 3:* a **"Revert to default…"** link in the modified detail (only when the keymap is
+    editable) → `RevertConfirmDialog` (the Show-actions checkbox-list pattern, like Remove) →
+    `revertToDefault()`, which calls `KeymapImpl.clearOwnActionsId(id)` to **drop the own
+    declaration so the parent binding re-inherits**. An action the parent doesn't bind becomes
+    unbound (reverting an *added* shortcut removes it). Gated on `canModify()`: a freshly derived
+    copy has no own declaration to drop, so revert on a read-only keymap would be a no-op.
 - The Modified section is informational (collapsed by default) except in "Show modified only"
   mode. For the bundled *MacBook Pro DE* the count is large (it re-states its bindings); for a
   derived/user keymap it shows just the handful of changes — the intended audit case.
-- Verified: IDE rebuild + `./gradlew buildPlugin` both clean. Not yet exercised in `runIde`.
+- Verified: IDE rebuild + `./gradlew buildPlugin` clean; `./gradlew verifyPlugin` → **Compatible**
+  (the `KeymapImpl` internal-API calls raise no verifier problems). Not yet exercised in `runIde`.
+
+## 8. Remaining (Phase 4 — polish, not yet done)
+
+- "Revert all…" bulk action from the Modified section header.
+- Respect **Show Action IDs** in the tree rows (currently only in the detail pane).
+- Consider firing a keymap-change event after revert so the live IDE refreshes immediately (today
+  the change persists via the scheme manager and the dialog refreshes, matching Remove/Rebind).

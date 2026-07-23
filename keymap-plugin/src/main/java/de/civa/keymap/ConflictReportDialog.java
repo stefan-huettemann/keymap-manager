@@ -1448,8 +1448,9 @@ public final class ConflictReportDialog extends DialogWrapper {
     addHtml(callout("What to do", escape(internalNote(c))));
   }
 
-  /** A shortcut this keymap declares itself (differs from the parent). An audit view: it shows the
-   *  action, its binding and source. Rebinding/reverting from here is a later step. */
+  /** A shortcut this keymap declares itself (differs from the parent): its action, binding and source,
+   *  with a Revert-to-default link (when the keymap is editable) that drops the own declaration so the
+   *  parent binding re-inherits. */
   private void buildModifiedDetail(ConflictScan.ModifiedBinding m) {
     ConflictScan.ActionRef a = m.action();
     boolean cleared = m.shortcuts().isEmpty();
@@ -1463,6 +1464,10 @@ public final class ConflictReportDialog extends DialogWrapper {
       + callout("What this is", escape(body)));
     JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
     row.setOpaque(false);
+    if (keymap.canModify()) {
+      row.add(new ActionLink("Revert to default…", (ActionListener) e -> confirmRevert(List.of(a.id()))));
+      row.add(dot());
+    }
     row.add(new ActionLink("Open Keymap settings", (ActionListener) e -> openKeymapSettings()));
     addBlock(row);
   }
@@ -1593,6 +1598,83 @@ public final class ConflictReportDialog extends DialogWrapper {
       int total = ids.size();
       return "Remove “" + KeymapUtil.getKeystrokeText(stroke) + "” from " + checkList.checkedIds().size()
         + " of " + total + " action" + (total == 1 ? "" : "s") + " on this key?";
+    }
+
+    @Override
+    protected JComponent createDoNotAskCheckbox() {
+      JCheckBox show = new JCheckBox("Show actions");
+      show.addActionListener(e -> {
+        checkList.setVisible(show.isSelected());
+        resizeToFit(checkList);
+      });
+      return show;
+    }
+
+    List<String> selectedIds() {
+      return checkList.checkedIds();
+    }
+  }
+
+  /** Confirm, then revert the chosen actions to the parent keymap's binding. */
+  private void confirmRevert(List<String> ids) {
+    RevertConfirmDialog dialog = new RevertConfirmDialog(ids);
+    if (dialog.showAndGet()) revertToDefault(dialog.selectedIds());
+  }
+
+  /** Drop this keymap's own declarations for the given actions so they re-inherit the parent binding
+   *  (an action the parent doesn't bind becomes unbound). Only reached for an editable keymap. */
+  private void revertToDefault(List<String> ids) {
+    Keymap target = ensureEditable();
+    if (!(target instanceof KeymapImpl impl)) return;
+    for (String id : ids) impl.clearOwnActionsId(id);
+    refresh();
+    updateActionButtons();
+  }
+
+  /** Revert confirmation: a "Show actions" checkbox on the button row reveals an editable pick list. */
+  private final class RevertConfirmDialog extends DialogWrapper {
+    private final List<String> ids;
+    private ActionCheckboxList checkList;
+
+    RevertConfirmDialog(List<String> ids) {
+      super(project);
+      this.ids = ids;
+      setTitle("Revert to Default");
+      init();
+      setResizable(true);  // a resizable window is movable on macOS and can be resized to fit content
+      setOKButtonText("Revert");
+    }
+
+    @Override
+    protected JComponent createCenterPanel() {
+      checkList = new ActionCheckboxList(ids);
+      checkList.setVisible(false);
+
+      JBLabel summary = new JBLabel();
+      summary.setAlignmentX(Component.LEFT_ALIGNMENT);
+      checkList.setOnChange(() -> summary.setText(revertSummary()));
+      summary.setText(revertSummary());
+
+      JBLabel note = new JBLabel("<html><span style='color:" + hex(grayColour()) + "'>Each reverts to the "
+        + "parent keymap's binding; an action the parent doesn't bind becomes unbound.</span></html>");
+      note.setAlignmentX(Component.LEFT_ALIGNMENT);
+      note.setBorder(JBUI.Borders.emptyTop(6));
+
+      JPanel stack = new JPanel();
+      stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
+      stack.add(summary);
+      stack.add(note);
+      stack.add(checkList);
+
+      JPanel wrap = new JPanel(new BorderLayout());  // NORTH keeps content pinned to the top-left
+      wrap.add(stack, BorderLayout.NORTH);
+      return wrap;
+    }
+
+    private String revertSummary() {
+      int total = ids.size();
+      return "Revert " + checkList.checkedIds().size() + " of " + total
+        + " shortcut" + (total == 1 ? "" : "s") + " to the parent keymap?";
     }
 
     @Override
