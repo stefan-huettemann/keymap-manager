@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+
 plugins {
     id("java")
     id("org.jetbrains.intellij.platform") version "2.18.1"
@@ -38,6 +40,17 @@ intellijPlatform {
             sinceBuild = "261"
             // keymap-only plugin: no API surface, don't cap compatibility
             untilBuild = provider { null }
+        }
+    }
+
+    pluginVerification {
+        // flags @ApiStatus.Internal / impl-package usage and deprecations against the target IDE.
+        // Pinned explicitly (recommended() resolves empty for the very new 261 build) and via the
+        // Maven repo (useInstaller = false) because the installer URL doesn't resolve for this version.
+        ides {
+            create(IntelliJPlatformType.IntellijIdeaCommunity, "2026.1.4") {
+                useInstaller = false
+            }
         }
     }
 }

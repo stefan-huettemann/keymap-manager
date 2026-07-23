@@ -125,6 +125,12 @@ public final class ConflictReportDialog extends DialogWrapper {
   /** Keymaps this plugin ships — grouped just below the active one in the selector. */
   private static final Set<String> OWN_KEYMAP_NAMES = Set.of("MacBook Pro DE");
 
+  /** Official keymap names the platform reserves; reusing one (or a "Mac OS X" prefix) changes how
+   *  shortcuts are interpreted. Mirrors the canonical list in KeymapImpl.kt (notifyAboutMissingKeymap). */
+  private static final Set<String> RESERVED_KEYMAP_NAMES = Set.of(
+    "Eclipse", "Emacs", "NetBeans 6.5", "QtCreator", "ReSharper", "Sublime Text",
+    "Visual Studio", "Visual Assist", "Xcode", "Rider", "VSCode", "macOS System Shortcuts");
+
   private final Project project;
   private Keymap keymap;   // the keymap the report currently previews (the combo selection)
   private Keymap active;   // the keymap actually active in the IDE (moves on Activate)
@@ -300,8 +306,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       @Override public boolean isSelected(@NotNull AnActionEvent e) { return showActionIds; }
       @Override public void setSelected(@NotNull AnActionEvent e, boolean state) {
         showActionIds = state;
-        if (currentPayload != null) showDetail(currentPayload);  // re-render with/without ids
-        tree.repaint();
+        if (currentPayload != null) showDetail(currentPayload);  // re-render detail pane with/without ids
       }
       @Override public ActionUpdateThread getActionUpdateThread() { return ActionUpdateThread.EDT; }
     });
@@ -356,6 +361,13 @@ public final class ConflictReportDialog extends DialogWrapper {
         return;
       }
     }
+    if (isReservedKeymapName(newName)) {
+      Messages.showErrorDialog(project,
+        "“" + newName + "” is a reserved keymap name (it starts with “Mac OS X” or matches a built-in "
+        + "keymap), which would change how shortcuts are interpreted. Choose a different name.", "Rename Keymap");
+      renameField.requestFocusInWindow();
+      return;
+    }
     if (!(keymap instanceof ExternalizableScheme scheme)) { cancelRename(); return; }
     // Re-register under the new name so the scheme manager's name index stays consistent.
     boolean wasActive = sameKeymap(keymap, active);
@@ -366,6 +378,16 @@ public final class ConflictReportDialog extends DialogWrapper {
     if (wasActive) { manager.setActiveKeymap(keymap); active = keymap; }
     cancelRename();
     reloadKeymaps();
+  }
+
+  /** A name the platform reserves: the modifier-converting "Mac OS X" prefix, or an official keymap
+   *  name (including its "… OSX" / "… (Mac OS X)" variants). */
+  private static boolean isReservedKeymapName(String name) {
+    if (name.startsWith("Mac OS X")) return true;
+    for (String base : RESERVED_KEYMAP_NAMES) {
+      if (name.equals(base) || name.equals(base + " OSX") || name.equals(base + " (Mac OS X)")) return true;
+    }
+    return false;
   }
 
   private void deleteKeymap() {
@@ -1036,6 +1058,13 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
   }
 
+  /** The action's display name (template text), falling back to its id when unresolved. */
+  private static String actionName(String id) {
+    AnAction action = ActionManager.getInstance().getAction(id);
+    String text = action == null ? null : action.getTemplateText();
+    return text != null && !text.isBlank() ? text : id;
+  }
+
   /** The action's providing plugin when worth showing (not the IDE core, not unknown). */
   private static @Nullable String notableSource(ConflictScan.ActionRef a) {
     String s = a.source();
@@ -1155,12 +1184,9 @@ public final class ConflictReportDialog extends DialogWrapper {
       setOpaque(false);
       setBorder(JBUI.Borders.empty(4, 6, 0, 0));
       setAlignmentX(Component.LEFT_ALIGNMENT);
-      ActionManager am = ActionManager.getInstance();
       ids = actionIds.stream().sorted().toList();
       for (String id : ids) {
-        AnAction a = am.getAction(id);
-        String text = a == null ? null : a.getTemplateText();
-        JCheckBox cb = new JCheckBox(text != null && !text.isBlank() ? text : id, true);
+        JCheckBox cb = new JCheckBox(actionName(id), true);
         cb.setOpaque(false);
         cb.setAlignmentX(Component.LEFT_ALIGNMENT);
         cb.addItemListener(e -> { if (onChange != null) onChange.run(); });
@@ -1570,12 +1596,6 @@ public final class ConflictReportDialog extends DialogWrapper {
         if (!movingIds.contains(id)) hits.add(id);
       }
       return hits;
-    }
-
-    private static String actionName(String id) {
-      AnAction action = ActionManager.getInstance().getAction(id);
-      String text = action == null ? null : action.getTemplateText();
-      return text != null && !text.isBlank() ? text : id;
     }
 
     private @Nullable KeyStroke build() {

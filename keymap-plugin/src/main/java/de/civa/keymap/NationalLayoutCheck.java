@@ -34,7 +34,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class NationalLayoutCheck implements KeymapManagerListener, AppLifecycleListener {
   private static final String KEYMAP_NAME = "MacBook Pro DE";
   private static final String NOTIFICATION_GROUP = "MacBook Pro DE Keymap";
-  private static final AtomicBoolean NOTIFIED = new AtomicBoolean();
+  // Two independent one-shots so the critical layout-off warning is never pre-empted by the generic
+  // nudge: they apply to different keymaps and must not share a latch.
+  private static final AtomicBoolean NUDGED = new AtomicBoolean();
+  private static final AtomicBoolean WARNED = new AtomicBoolean();
 
   @Override
   public void appFrameCreated(@NotNull List<String> commandLineArgs) {
@@ -53,13 +56,16 @@ public final class NationalLayoutCheck implements KeymapManagerListener, AppLife
     if (keymap == null || !SystemInfoRt.isMac) {
       return;
     }
-    if (!NOTIFIED.compareAndSet(false, true)) {
-      return;
-    }
     // The national-layout warning only applies to our keymap — it is the one binding German keys.
     // For any other active keymap we still offer the conflict report, which scans whatever is active.
     boolean ownKeymap = KEYMAP_NAME.equals(keymap.getName());
     boolean layoutOff = ownKeymap && !NationalKeyboardSupport.getInstance().getEnabled();
+    // Latch per kind of notification. The layout-off warning uses its own latch, so a nudge shown
+    // first (e.g. a non-German keymap active at startup) can't suppress the warning when the user
+    // later switches to this keymap.
+    if (!(layoutOff ? WARNED : NUDGED).compareAndSet(false, true)) {
+      return;
+    }
     Notification notification = NotificationGroupManager.getInstance()
       .getNotificationGroup(NOTIFICATION_GROUP)
       .createNotification(
