@@ -1,6 +1,6 @@
 # 0001 — Filter / view for modified shortcuts
 
-- **Status:** In progress — **Phases 1–3 implemented 2026-07-23** (extend the plugin; scope/name framing in [0002](0002-plugin-scope-and-name.md))
+- **Status:** Implemented — **Phases 1–4, 2026-07-23** (extend the plugin; scope/name framing in [0002](0002-plugin-scope-and-name.md))
 - **Source:** [IJPL-228176 — "Add filter for modified shortcuts in Keymap settings"](https://youtrack.jetbrains.com/issue/IJPL-228176)
 - **Date:** 2026-07-23
 
@@ -124,7 +124,7 @@ window. Phased so each step is shippable on its own.
 - Edge case: an action *added* in this keymap that has **no** parent binding —
   revert then means "remove entirely"; label/handle that honestly.
 
-### Phase 4 — polish
+### Phase 4 — polish — ✅ done 2026-07-23
 - "Revert all…" as a bulk action from the section header.
 - Respect the existing **Show Action IDs** toggle in the new rows.
 - `{ide}` placeholder discipline for all new strings (never hardcode "IntelliJ").
@@ -233,9 +233,18 @@ Landed as an audit view with per-action revert.
 - Verified: IDE rebuild + `./gradlew buildPlugin` clean; `./gradlew verifyPlugin` → **Compatible**
   (the `KeymapImpl` internal-API calls raise no verifier problems). Not yet exercised in `runIde`.
 
-## 8. Remaining (Phase 4 — polish, not yet done)
+## 8. Phase 4 — polish (✅ done 2026-07-23)
 
-- "Revert all…" bulk action from the Modified section header.
-- Respect **Show Action IDs** in the tree rows (currently only in the detail pane).
-- Consider firing a keymap-change event after revert so the live IDE refreshes immediately (today
-  the change persists via the scheme manager and the dialog refreshes, matching Remove/Rebind).
+- **"Revert all to default… (N)"** from the Modified section header (its detail pane), reusing the
+  revert confirmation and its Show-actions pick list.
+- **Show Action IDs** now honored on the Modified tree rows — `Renderer` became a non-static inner
+  class so it reads the toggle, and the tree repaints when the toggle flips.
+- Revert now **fires the shortcut-changed event** itself:
+  `KeymapManagerListener.shortcutsChanged(keymap, ids, false)`. `KeymapImpl.clearOwnActionsId` (unlike
+  add/removeShortcut) doesn't fire it, so the live IDE wouldn't refresh without this — now it matches
+  Remove/Rebind.
+- `{ide}` discipline: the new strings name no host IDE, so no substitution was needed.
+- `CLAUDE.md` dialog paragraph updated to cover the Modified section, the toggle, and revert.
+
+**Feature complete (Phases 1–4).** Verified: IDE rebuild + `./gradlew buildPlugin` + `verifyPlugin`
+all clean (Compatible). `runIde` spot-check of the Phase 3–4 additions still worth doing.

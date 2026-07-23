@@ -24,6 +24,7 @@ import com.intellij.openapi.fileChooser.FileSaverDialog;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.KeymapManager;
+import com.intellij.openapi.keymap.KeymapManagerListener;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.keymap.ex.KeymapManagerEx;
 import com.intellij.openapi.keymap.impl.KeymapImpl;
@@ -338,6 +339,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       @Override public boolean isSelected(@NotNull AnActionEvent e) { return showActionIds; }
       @Override public void setSelected(@NotNull AnActionEvent e, boolean state) {
         showActionIds = state;
+        tree.repaint();  // Modified rows show/hide the id
         if (currentPayload != null) showDetail(currentPayload);  // re-render detail pane with/without ids
       }
       @Override public ActionUpdateThread getActionUpdateThread() { return ActionUpdateThread.EDT; }
@@ -1390,6 +1392,14 @@ public final class ConflictReportDialog extends DialogWrapper {
     if (payload instanceof Section s) {
       addHtml("<h3 style='margin:0 0 4px 0'>" + escape(s.title()) + "</h3>"
         + grayBlock(escape(sectionBlurb(s.title()))));
+      if (s.title().equals(SEC_MODIFIED) && keymap.canModify() && !scan.modified.isEmpty()) {
+        List<String> allIds = scan.modified.stream().map(m -> m.action().id()).toList();
+        JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
+        row.setOpaque(false);
+        row.add(new ActionLink("Revert all to default… (" + allIds.size() + ")",
+          (ActionListener) e -> confirmRevert(allIds)));
+        addBlock(row);
+      }
     }
     else if (payload instanceof Empty e) {
       addHtml(grayBlock(escape(e.message())));
@@ -1627,6 +1637,10 @@ public final class ConflictReportDialog extends DialogWrapper {
     Keymap target = ensureEditable();
     if (!(target instanceof KeymapImpl impl)) return;
     for (String id : ids) impl.clearOwnActionsId(id);
+    // clearOwnActionsId doesn't fire the shortcut-changed event add/removeShortcut do, so publish it
+    // ourselves — the same public notification the platform uses — so the live IDE refreshes too.
+    ApplicationManager.getApplication().getMessageBus()
+      .syncPublisher(KeymapManagerListener.TOPIC).shortcutsChanged(impl, ids, false);
     refresh();
     updateActionButtons();
   }
@@ -1960,7 +1974,7 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   // ---- renderer -------------------------------------------------------------------------------
 
-  private static final class Renderer extends ColoredTreeCellRenderer {
+  private final class Renderer extends ColoredTreeCellRenderer {
     @Override
     public void customizeCellRenderer(JTree tree, Object value, boolean selected, boolean expanded,
                                       boolean leaf, int row, boolean hasFocus) {
@@ -1999,6 +2013,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       String keys = shortcutsText(m.shortcuts());
       append(m.action().label(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
       append("  " + (keys.isEmpty() ? "(removed)" : keys), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+      if (showActionIds) append("   " + m.action().id(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
     }
 
     private void renderConflict(ConflictScan.ExternalConflict c) {
