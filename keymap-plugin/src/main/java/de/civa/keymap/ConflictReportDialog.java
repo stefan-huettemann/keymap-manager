@@ -37,6 +37,7 @@ import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.InplaceButton;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.KeyStrokeAdapter;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
 import com.intellij.ui.SimpleTextAttributes;
@@ -98,15 +99,23 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * A foldable, navigable view of a keymap's shortcut conflicts, produced live by
@@ -296,12 +305,10 @@ public final class ConflictReportDialog extends DialogWrapper {
     return selector;
   }
 
-  /** A real IDEA action menu: the three exports and duplicate always, rename/delete when editable. */
+  /** A real IDEA action menu: Export… and Duplicate always, Rename/Delete when editable. */
   private void showGearMenu(Component anchor) {
     DefaultActionGroup group = new DefaultActionGroup(
-      menuAction("Export full keymap (.xml)", false, () -> exportKeymap(ExportScope.FULL)),
-      menuAction("Export only conflicting mappings (.xml)", false, () -> exportKeymap(ExportScope.CONFLICTS)),
-      menuAction("Export conflicting + overlapping mappings (.xml)", false, () -> exportKeymap(ExportScope.CONFLICTS_AND_OVERLAPS)),
+      menuAction("Export…", false, this::openExportDialog),
       Separator.getInstance(),
       menuAction("Duplicate", false, this::duplicateKeymap),
       menuAction("Rename…", true, this::startRename),
@@ -797,74 +804,282 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   // ---- export ---------------------------------------------------------------------------------
 
-  /** What subset of the selected keymap an export writes, all in the internal keymap XML format. */
-  private enum ExportScope {
-    FULL("-full", "the full keymap"),
-    CONFLICTS("-conflicts", "the conflicting mappings"),
-    CONFLICTS_AND_OVERLAPS("-conflicts-overlaps", "the conflicting and overlapping mappings");
+  /**
+   * A selectable export scope. Categories 1-3 are built from the effective bindings the scan reads
+   * (inherited ones included), serialized with the platform's own keystroke writer; category 4 is
+   * the keymap's own declarations (its diff against the parent, via {@link KeymapImpl#writeScheme()}).
+   */
+  private enum ExportCategory {
+    CONFLICTS("Conflicts", "conflicts", "macOS takes the key first"),
+    OVERLAPS("Overlaps", "overlaps", "overlap macOS but keep working"),
+    DOUBLE_BINDS("Double-bound keys", "double-binds", "one key bound to several actions"),
+    CHANGES("Changes vs the parent keymap", "changes", "everything this keymap declares itself");
 
+    final String label;
     final String suffix;
-    final String noun;
-    ExportScope(String suffix, String noun) { this.suffix = suffix; this.noun = noun; }
+    final String hint;
+    ExportCategory(String label, String suffix, String hint) {
+      this.label = label; this.suffix = suffix; this.hint = hint;
+    }
+  }
+
+  /** Gear-menu entry point: choose what to export and how it is packaged. */
+  private void openExportDialog() {
+    ExportDialog dialog = new ExportDialog();
+    if (!dialog.showAndGet()) return;
+    if (dialog.isAllKeys()) exportAllKeys();
+    else exportCategories(dialog.selectedCategories());
   }
 
   /**
-   * Serialize the selected keymap to a user-chosen {@code .xml} file in the platform's own keymap
-   * format ({@link KeymapImpl#writeScheme()}). For the two conflict scopes the serialized element is
-   * pruned to the affected {@code <action>} entries; only bindings the keymap itself declares can be
-   * exported this way, so conflicts carried by inherited or other-plugin bindings are not included.
+   * Export the chosen categories. A single category is written as one {@code .xml}; two or more are
+   * bundled into a {@code .zip} with one XML per category.
    */
-  private void exportKeymap(ExportScope scope) {
-    if (!(keymap instanceof KeymapImpl impl)) {
-      Messages.showErrorDialog(project, "This keymap cannot be serialized to XML on this runtime.", "Export Failed");
+  private void exportCategories(Set<ExportCategory> categories) {
+    LinkedHashMap<ExportCategory, String> files = new LinkedHashMap<>();
+    for (ExportCategory cat : ExportCategory.values()) {
+      if (!categories.contains(cat)) continue;
+      String xml = buildCategoryXml(cat);
+      if (xml != null) files.put(cat, xml);
+    }
+    if (files.isEmpty()) {
+      Messages.showInfoMessage(project, "Nothing to export for the selected options.", "Nothing to Export");
       return;
     }
-    Element root = impl.writeScheme();  // <keymap ...> with <action> children
-    if (scope != ExportScope.FULL) {
-      Set<String> keep = conflictingActionIds(scope == ExportScope.CONFLICTS_AND_OVERLAPS);
-      for (Element action : new ArrayList<>(root.getChildren("action"))) {
-        if (!keep.contains(action.getAttributeValue("id"))) root.removeContent(action);
-      }
-      if (root.getChildren("action").isEmpty()) {
-        Messages.showInfoMessage(project, "This keymap declares no " + scope.noun + " to export.", "Nothing to Export");
-        return;
-      }
-    }
-
-    FileSaverDescriptor descriptor = new FileSaverDescriptor("Export Keymap", "Save the keymap as XML", "xml");
-    FileSaverDialog dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project);
-    VirtualFileWrapper wrapper = dialog.save("keymap-" + sanitize(keymap.getName()) + scope.suffix + ".xml");
-    if (wrapper == null) return;  // user cancelled
-    File file = wrapper.getFile();
-    try {
-      Files.writeString(file.toPath(), JDOMUtil.writeElement(root), StandardCharsets.UTF_8);
-    }
-    catch (IOException ex) {
-      Messages.showErrorDialog(project, "Could not write the keymap:\n" + ex.getMessage(), "Export Failed");
-      return;
-    }
-    VirtualFile vf = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
-    if (project != null && vf != null) {
-      FileEditorManager.getInstance(project).openFile(vf, true);
+    String name = sanitize(keymap.getName());
+    if (files.size() == 1) {
+      ExportCategory cat = files.keySet().iterator().next();
+      saveText("keymap-" + name + "-" + cat.suffix + ".xml", files.get(cat));
     }
     else {
-      Messages.showInfoMessage(project, "Keymap saved to:\n" + file.getAbsolutePath(), "Export Complete");
+      LinkedHashMap<String, String> entries = new LinkedHashMap<>();
+      for (Map.Entry<ExportCategory, String> e : files.entrySet()) {
+        entries.put(name + "-" + e.getKey().suffix + ".xml", e.getValue());
+      }
+      saveZip("keymap-" + name + "-export.zip", entries);
     }
   }
 
-  /** Action ids caught by the macOS scan — the ones needing attention, plus benign overlaps when asked. */
-  private Set<String> conflictingActionIds(boolean includeOverlaps) {
-    Set<String> ids = new HashSet<>();
-    for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
-      if (!includeOverlaps && !needsAttention(c)) continue;
-      for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
+  /** The keymap XML for one category, or {@code null} if it has nothing (or cannot be serialized). */
+  private @Nullable String buildCategoryXml(ExportCategory cat) {
+    if (cat == ExportCategory.CHANGES) {
+      if (!(keymap instanceof KeymapImpl impl)) {
+        Messages.showErrorDialog(project,
+          "“Changes vs the parent keymap” cannot be serialized for this keymap on this runtime.", "Export Failed");
+        return null;
+      }
+      return JDOMUtil.writeElement(impl.writeScheme());  // <keymap ...> with the own <action> declarations
     }
-    return ids;
+    Map<String, Set<KeyboardShortcut>> byAction = switch (cat) {
+      case CONFLICTS -> conflictShortcuts(true);
+      case OVERLAPS -> conflictShortcuts(false);
+      case DOUBLE_BINDS -> doubleBoundShortcuts();
+      default -> Map.of();
+    };
+    if (byAction.isEmpty()) return null;
+    return JDOMUtil.writeElement(keymapElement(keymap.getPresentableName() + " (" + cat.suffix + ")", byAction));
+  }
+
+  /** Effective keyboard shortcuts of every action on a macOS-overlapping key, split by whether the
+   *  overlap needs attention (macOS wins) or merely overlaps but keeps working. */
+  private Map<String, Set<KeyboardShortcut>> conflictShortcuts(boolean needsAttention) {
+    Map<String, Set<KeyboardShortcut>> byAction = new TreeMap<>();
+    for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
+      if (needsAttention(c) != needsAttention) continue;
+      KeyStroke first = c.stroke();
+      for (ConflictScan.ActionRef a : c.actions()) {
+        for (Shortcut sc : keymap.getShortcuts(a.id())) {
+          if (sc instanceof KeyboardShortcut ks && first.equals(ks.getFirstKeyStroke())) {
+            byAction.computeIfAbsent(a.id(), k -> new LinkedHashSet<>()).add(ks);
+          }
+        }
+      }
+    }
+    return byAction;
+  }
+
+  /** The shared shortcut of every double-bound action (the in-keymap duplicates), by action. */
+  private Map<String, Set<KeyboardShortcut>> doubleBoundShortcuts() {
+    Map<String, Set<KeyboardShortcut>> byAction = new TreeMap<>();
+    for (ConflictScan.InternalConflict c : scan.internal) {
+      if (!(c.shortcut() instanceof KeyboardShortcut ks)) continue;
+      for (ConflictScan.ActionRef a : c.actions()) {
+        byAction.computeIfAbsent(a.id(), k -> new LinkedHashSet<>()).add(ks);
+      }
+    }
+    return byAction;
+  }
+
+  /** Build a {@code <keymap>} element listing the given actions, using the platform's own keystroke
+   *  serializer so the format (incl. the German umlaut hex codes) matches written keymaps exactly. */
+  private static Element keymapElement(String name, Map<String, Set<KeyboardShortcut>> byAction) {
+    Element root = new Element("keymap");
+    root.setAttribute("version", "1");
+    root.setAttribute("name", name);
+    for (Map.Entry<String, Set<KeyboardShortcut>> e : byAction.entrySet()) {
+      Element action = new Element("action");
+      action.setAttribute("id", e.getKey());
+      for (KeyboardShortcut ks : e.getValue()) {
+        Element shortcut = new Element("keyboard-shortcut");
+        shortcut.setAttribute("first-keystroke", KeyStrokeAdapter.toString(ks.getFirstKeyStroke()));
+        KeyStroke second = ks.getSecondKeyStroke();
+        if (second != null) shortcut.setAttribute("second-keystroke", KeyStrokeAdapter.toString(second));
+        action.addContent(shortcut);
+      }
+      root.addContent(action);
+    }
+    return root;
+  }
+
+  /** Export the whole inheritance chain — this keymap and every parent down to {@code $default} — as
+   *  a {@code .zip} of one XML per level. Each level holds its own declarations, so the set reconstructs
+   *  everything ({@code $default} carries the base, since it has no parent). */
+  private void exportAllKeys() {
+    LinkedHashMap<String, String> entries = new LinkedHashMap<>();
+    int level = 1;
+    for (Keymap k = keymap; k != null; k = k.getParent(), level++) {
+      if (k instanceof KeymapImpl impl) {
+        entries.put(String.format("%02d-%s.xml", level, sanitize(k.getName())), JDOMUtil.writeElement(impl.writeScheme()));
+      }
+    }
+    if (entries.isEmpty()) {
+      Messages.showErrorDialog(project, "This keymap cannot be serialized on this runtime.", "Export Failed");
+      return;
+    }
+    saveZip("keymap-" + sanitize(keymap.getName()) + "-all.zip", entries);
+  }
+
+  /** How many items category {@code cat} would export (drives the dialog's counts). */
+  private int categoryCount(ExportCategory cat) {
+    return switch (cat) {
+      case CONFLICTS -> (int) scan.keymapConflicts.stream().filter(ConflictReportDialog::needsAttention).count();
+      case OVERLAPS -> (int) scan.keymapConflicts.stream().filter(c -> !needsAttention(c)).count();
+      case DOUBLE_BINDS -> scan.internal.size();
+      case CHANGES -> keymap instanceof KeymapImpl impl ? impl.writeScheme().getChildren("action").size() : 0;
+    };
+  }
+
+  private void saveText(String defaultName, String content) {
+    File file = chooseSaveFile(defaultName, "xml");
+    if (file == null) return;
+    try {
+      Files.writeString(file.toPath(), content, StandardCharsets.UTF_8);
+    }
+    catch (IOException ex) {
+      Messages.showErrorDialog(project, "Could not write the file:\n" + ex.getMessage(), "Export Failed");
+      return;
+    }
+    openOrNotify(file);
+  }
+
+  private void saveZip(String defaultName, Map<String, String> entries) {
+    File file = chooseSaveFile(defaultName, "zip");
+    if (file == null) return;
+    try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(file), StandardCharsets.UTF_8)) {
+      for (Map.Entry<String, String> e : entries.entrySet()) {
+        zip.putNextEntry(new ZipEntry(e.getKey()));
+        zip.write(e.getValue().getBytes(StandardCharsets.UTF_8));
+        zip.closeEntry();
+      }
+    }
+    catch (IOException ex) {
+      Messages.showErrorDialog(project, "Could not write the archive:\n" + ex.getMessage(), "Export Failed");
+      return;
+    }
+    openOrNotify(file);
+  }
+
+  private @Nullable File chooseSaveFile(String defaultName, String extension) {
+    FileSaverDescriptor descriptor = new FileSaverDescriptor("Export Keymap", "Save the export", extension);
+    FileSaverDialog dialog = FileChooserFactory.getInstance().createSaveFileDialog(descriptor, project);
+    VirtualFileWrapper wrapper = dialog.save(defaultName);
+    return wrapper == null ? null : wrapper.getFile();
+  }
+
+  /** Open an exported XML in the editor; for archives just report where it landed. */
+  private void openOrNotify(File file) {
+    VirtualFile vf = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file);
+    if (project != null && vf != null && "xml".equalsIgnoreCase(vf.getExtension())) {
+      FileEditorManager.getInstance(project).openFile(vf, true);
+    }
+    else {
+      Messages.showInfoMessage(project, "Saved to:\n" + file.getAbsolutePath(), "Export Complete");
+    }
   }
 
   private static String sanitize(String s) {
     String cleaned = s.replaceAll("[^A-Za-z0-9]+", "-").replaceAll("(^-|-$)", "");
     return cleaned.isEmpty() ? "keymap" : cleaned;
+  }
+
+  /** Chooses the export scope: the whole inheritance chain, or any mix of the four categories. */
+  private final class ExportDialog extends DialogWrapper {
+    private final JRadioButton selectedRadio = new JRadioButton("Selected mappings", true);
+    private final JRadioButton allRadio =
+      new JRadioButton("All keys — this keymap and every parent down to $default (.zip)");
+    private final Map<ExportCategory, JCheckBox> boxes = new EnumMap<>(ExportCategory.class);
+    private final Map<ExportCategory, Integer> counts = new EnumMap<>(ExportCategory.class);
+
+    ExportDialog() {
+      super(project);
+      setTitle("Export Keymap");
+      init();
+      setOKButtonText("Export");
+      updateOkState();
+    }
+
+    @Override
+    protected JComponent createCenterPanel() {
+      for (ExportCategory cat : ExportCategory.values()) counts.put(cat, categoryCount(cat));
+
+      ButtonGroup mode = new ButtonGroup();
+      mode.add(selectedRadio);
+      mode.add(allRadio);
+      selectedRadio.addActionListener(e -> { syncEnabled(); updateOkState(); });
+      allRadio.addActionListener(e -> { syncEnabled(); updateOkState(); });
+
+      JPanel categories = new JPanel();
+      categories.setLayout(new BoxLayout(categories, BoxLayout.Y_AXIS));
+      categories.setBorder(JBUI.Borders.emptyLeft(22));
+      for (ExportCategory cat : ExportCategory.values()) {
+        int count = counts.get(cat);
+        JCheckBox box = new JCheckBox(cat.label + " (" + count + ") — " + cat.hint);
+        box.setEnabled(count > 0);
+        box.addActionListener(e -> updateOkState());
+        boxes.put(cat, box);
+        categories.add(box);
+      }
+
+      JPanel panel = new JPanel();
+      panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+      panel.setBorder(JBUI.Borders.empty(10, 12));
+      panel.add(selectedRadio);
+      panel.add(categories);
+      panel.add(Box.createVerticalStrut(JBUI.scale(8)));
+      panel.add(allRadio);
+      return panel;
+    }
+
+    private void syncEnabled() {
+      boolean selectable = selectedRadio.isSelected();
+      boxes.forEach((cat, box) -> box.setEnabled(selectable && counts.get(cat) > 0));
+    }
+
+    private void updateOkState() {
+      setOKActionEnabled(allRadio.isSelected() || !selectedCategories().isEmpty());
+    }
+
+    boolean isAllKeys() {
+      return allRadio.isSelected();
+    }
+
+    Set<ExportCategory> selectedCategories() {
+      Set<ExportCategory> result = EnumSet.noneOf(ExportCategory.class);
+      if (selectedRadio.isSelected()) {
+        boxes.forEach((cat, box) -> { if (box.isEnabled() && box.isSelected()) result.add(cat); });
+      }
+      return result;
+    }
   }
 
   // ---- detail pane ----------------------------------------------------------------------------
