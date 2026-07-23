@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repository is
 
-A **JetBrains plugins project** (see `README.md`). The active plugin is **Manage Keymap Conflicts** (ID `de.civa.keymap`, display name "Manage Keymap Conflicts"). Its focus is **shortcut-conflict resolution for any macOS keymap**; it also bundles the **MacBook Pro DE** keymap as a ready-made starting point for JetBrains IDEs on macOS. The driving constraint for that keymap is a **German (T1/ISO) keyboard on a MacBook Pro** — many stock IntelliJ bindings are physically unpressable there and are being replaced.
+A **JetBrains plugins project** (see `README.md`). The active plugin is **Manage Keymap Conflicts** (ID `de.civa.plugins.keymapmanager`, display name "Manage Keymap Conflicts"). Its focus is **shortcut-conflict resolution for any macOS keymap**; it also bundles the **MacBook Pro DE** keymap as a ready-made starting point for JetBrains IDEs on macOS. The driving constraint for that keymap is a **German (T1/ISO) keyboard on a MacBook Pro** — many stock IntelliJ bindings are physically unpressable there and are being replaced.
 
 `keymaps/keys.md` is the canonical reference: the German-layout constraint, the audit of every key the keymap uses, and the machine-verified table of bindable German keys (umlaut hex encoding). Read it before touching keymap XML. (A more detailed research doc, `handover-unreachable-keys.md`, exists locally but is gitignored — do not rely on it being present.)
 

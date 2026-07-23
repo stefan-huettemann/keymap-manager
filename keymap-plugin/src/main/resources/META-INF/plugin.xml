@@ -1,5 +1,5 @@
 <idea-plugin>
-  <id>de.civa.keymap</id>
+  <id>de.civa.plugins.keymapmanager</id>
   <name>Manage Keymap Conflicts</name>
   <vendor email="stefan.huettemann@civa.de" url="https://civa.de">CIVA</vendor>
 

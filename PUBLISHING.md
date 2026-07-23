@@ -1,6 +1,6 @@
 # Publishing to the JetBrains Marketplace
 
-How to register and release **Manage Keymap Conflicts** (`de.civa.keymap`) on the
+How to register and release **Manage Keymap Conflicts** (`de.civa.plugins.keymapmanager`) on the
 [JetBrains Marketplace](https://plugins.jetbrains.com). All Gradle commands run from `keymap-plugin/`.
 
 ## What's already set up
