@@ -3,6 +3,7 @@ package de.civa.keymap;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.IdeEventQueue;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
@@ -131,6 +132,10 @@ public final class ConflictReportDialog extends DialogWrapper {
     "Eclipse", "Emacs", "NetBeans 6.5", "QtCreator", "ReSharper", "Sublime Text",
     "Visual Studio", "Visual Assist", "Xcode", "Rider", "VSCode", "macOS System Shortcuts");
 
+  /** The running IDE's product name (e.g. "IntelliJ IDEA", "PyCharm", "Android Studio"), inlined
+   *  into user-facing text wherever the {@code {ide}} token appears. */
+  private static final String IDE_NAME = ApplicationNamesInfo.getInstance().getFullProductName();
+
   private final Project project;
   private Keymap keymap;   // the keymap the report currently previews (the combo selection)
   private Keymap active;   // the keymap actually active in the IDE (moves on Activate)
@@ -162,7 +167,7 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   // Section titles (used both as node labels and to spot the low-priority, collapsed-by-default ones).
   private static final String SEC_KEYMAP = "Keymap conflicts";
-  private static final String SEC_IDEA_IGNORED = "Overlaps IntelliJ doesn't flag";
+  private static final String SEC_IDEA_IGNORED = "Overlaps {ide} doesn't flag";
   private static final String SEC_DOUBLE = "Double-bound keys — informational, not conflicts";
 
   /** macOS shortcut ids IntelliJ's own keymap tool deliberately excludes from its conflict banner. */
@@ -703,7 +708,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
     pane.setContentType("text/html");
     pane.setFont(UIUtil.getLabelFont());
-    pane.setText(html);
+    pane.setText(subIde(html));
     pane.setCaretPosition(0);
     return pane;
   }
@@ -725,7 +730,7 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "to XML (the whole keymap, or just the conflicting / overlapping mappings). It also bundles the "
         + "<b>MacBook Pro DE</b> keymap as a ready-made starting point.</p>"
         + "<h3 style='margin:0 0 4px 0'>What this plugin does not</h3>"
-        + "<p style='margin:0'>It is <b>not a replacement for IntelliJ's built-in Keymap editor</b>. "
+        + "<p style='margin:0'>It is <b>not a replacement for {ide}'s built-in Keymap editor</b>. "
         + "Assigning shortcuts to arbitrary actions, browsing the full action list and general keymap "
         + "editing are done in <b>Settings &rarr; Keymap</b>. This plugin focuses on conflict resolution "
         + "and export for keymaps that already exist.</p>"
@@ -879,7 +884,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
     else if (payload instanceof IdeaIgnoredItem ii) {
       buildConflictDetail(ii.c(),
-        "IntelliJ's own Keymap settings does <b>not</b> flag this as a conflict — it deliberately "
+        "{ide}'s own Keymap settings does <b>not</b> flag this as a conflict — it deliberately "
         + "ignores window-switching overlaps. It is listed here only for completeness; the shortcut "
         + "works. Changing it is an optional, purely cosmetic tidy-up.");
     }
@@ -887,7 +892,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       String note = escape(s.note()) + " It isn't an actual shortcut in this keymap — the scan can't "
         + "see it — so there is nothing here to remove or rebind; it's listed for awareness only.";
       addHtml(shortcutHeader(s.keys())
-        + factRow("IntelliJ", escape(s.ideaSide()))
+        + factRow("{ide}", escape(s.ideaSide()))
         + factRow("macOS", escape(s.macSide()))
         + callout("What this means", note));
     }
@@ -910,7 +915,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     detailPanel.add(list);
     addBlock(linksRow(c.stroke(), c.actions(), list));
     String bottom = callout("What to do", escape(c.advice().note()));
-    if (extraNoteHtml != null) bottom += callout("Not flagged by IntelliJ", extraNoteHtml);
+    if (extraNoteHtml != null) bottom += callout("Not flagged by {ide}", extraNoteHtml);
     addHtml(bottom);
   }
 
@@ -1083,8 +1088,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   private static String internalNote(ConflictScan.InternalConflict c) {
-    return "This is usually not a conflict — IntelliJ picks the action that fits where you are (the "
-      + "editor, a tool window, a dialog). IntelliJ's own Keymap tool treats these the same way and "
+    return "This is usually not a conflict — {ide} picks the action that fits where you are (the "
+      + "editor, a tool window, a dialog). {ide}'s own Keymap tool treats these the same way and "
       + "doesn't flag them. It only breaks if two can fire in the same place; rebind or remove one "
       + "here if so.";
   }
@@ -1133,9 +1138,9 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   private static String status(ConflictScan.ExternalConflict c) {
     return switch (c.advice().category()) {
-      case RESOLVE -> "macOS takes this key first, so the IntelliJ shortcut does not work here.";
-      case UNCLASSIFIED -> "macOS may take this key, so the IntelliJ shortcut might not work here.";
-      case DELIBERATE -> "This overlaps a macOS shortcut, but the IntelliJ shortcut keeps working.";
+      case RESOLVE -> "macOS takes this key first, so the {ide} shortcut does not work here.";
+      case UNCLASSIFIED -> "macOS may take this key, so the {ide} shortcut might not work here.";
+      case DELIBERATE -> "This overlaps a macOS shortcut, but the {ide} shortcut keeps working.";
     };
   }
 
@@ -1146,17 +1151,22 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "core are tagged with their source; you can change them here just the same.";
     }
     if (title.equals(SEC_IDEA_IGNORED)) {
-      return "Overlaps IntelliJ's own Keymap tool doesn't flag: keys macOS also uses for switching "
-        + "windows (IntelliJ gets them first while it's in front), plus a couple of macOS features the "
+      return "Overlaps {ide}'s own Keymap tool doesn't flag: keys macOS also uses for switching "
+        + "windows ({ide} gets them first while it's in front), plus a couple of macOS features the "
         + "live scan can't see (the Emoji viewer, Dictation). All keep working and are listed for "
         + "completeness. The window-switch ones can still be changed; the scan-invisible notes cannot.";
     }
-    return "One shortcut bound to several actions inside the keymap. Not a conflict — IntelliJ "
+    return "One shortcut bound to several actions inside the keymap. Not a conflict — {ide} "
       + "picks the action that fits where you are. Shown for reference only.";
   }
 
   private static String macList(ConflictScan.ExternalConflict c) {
     return String.join("; ", c.macOs().stream().map(ConflictScan.SystemShortcut::label).distinct().toList());
+  }
+
+  /** Replace the {@code {ide}} placeholder in user-facing text with the running IDE's product name. */
+  private static String subIde(String s) {
+    return s.replace("{ide}", IDE_NAME);
   }
 
   private static String escape(String s) {
@@ -1322,7 +1332,7 @@ public final class ConflictReportDialog extends DialogWrapper {
                                       boolean leaf, int row, boolean hasFocus) {
       Object p = ((DefaultMutableTreeNode) value).getUserObject();
       if (p instanceof Section s) {
-        append(s.title(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
+        append(subIde(s.title()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
         append("  (" + s.count() + ")", SimpleTextAttributes.GRAYED_ATTRIBUTES);
       }
       else if (p instanceof Empty e) {
@@ -1556,7 +1566,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       }
       if (isBarePrintable()) {
         status.setText("⚠ Plain “" + displayFor(keyCode) + "” with no modifier — fires whenever you type it. "
-          + "Allowed (IDEA permits it), but usually unintended.");
+          + "Allowed (" + IDE_NAME + " permits it), but usually unintended.");
         status.setForeground(warnColour());
         return;
       }
