@@ -53,4 +53,21 @@ intellijPlatform {
             }
         }
     }
+
+    publishing {
+        // ./gradlew publishPlugin — set PUBLISH_TOKEN to a Marketplace permanent token
+        // (https://plugins.jetbrains.com/author/me/tokens). The FIRST release must still be uploaded
+        // manually on the web (it goes through moderation); this automates every release after that.
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+    }
+
+    // Optional author signing (Marketplace also signs on its side, so it is not required). Configured
+    // only when the key env vars are present, so publishPlugin still works unsigned without them.
+    if (System.getenv("CERTIFICATE_CHAIN") != null) {
+        signing {
+            certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+            privateKey = providers.environmentVariable("PRIVATE_KEY")
+            password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+        }
+    }
 }

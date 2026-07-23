@@ -1,20 +1,37 @@
 <idea-plugin>
   <id>de.civa.keymap</id>
   <name>Manage Keymap Conflicts</name>
-  <vendor email="stefan.huettemann@civa.de">CIVA</vendor>
+  <vendor email="stefan.huettemann@civa.de" url="https://civa.de">CIVA</vendor>
 
   <description><![CDATA[
-    Adds the <b>MacBook Pro DE</b> keymap: a macOS keymap for MacBook Pro
-    keyboards with German (T1) layout, avoiding shortcuts that are physically
-    unpressable there (keys like <code>/ = ; ' ` [ ]</code> exist only as
-    Shift/Option chords on the German layout, and there is no numpad or Insert
-    key). After installing, select <b>MacBook Pro DE</b> under
-    Settings &rarr; Keymap.
+    <b>Find and resolve keyboard-shortcut conflicts</b> in your macOS keymaps —
+    shortcuts that clash with macOS system shortcuts, and duplicate bindings
+    within a keymap. A live, grouped report explains each overlap (whether your
+    IDE still wins the key or macOS takes it first) and lets you rebind or
+    remove the shortcut in place, or export a keymap to XML. Open it any time
+    from <b>Tools &rarr; Manage Keymap Conflicts…</b> or Find Action.
     <br/><br/>
-    Includes a live conflict report (macOS system shortcuts and in-keymap
-    overlaps, with advice per conflict), reachable any time from
-    <b>Tools &rarr; Review Keymap Conflicts</b> or Find Action.
+    It also bundles the <b>MacBook Pro DE</b> keymap as a ready-made starting
+    point: a macOS keymap tuned for MacBook Pro keyboards with the German (T1)
+    layout, avoiding shortcuts that are physically unpressable there (keys like
+    <code>/ = ; ' ` [ ]</code> are only Shift/Option chords on that layout, and
+    there is no numpad or Insert key). Select it under
+    <b>Settings &rarr; Keymap</b>.
+    <br/><br/>
+    macOS-focused: the conflict scan reads the JetBrains Runtime's live
+    system-shortcut table (the same source as the IDE's own conflict banner).
   ]]></description>
+
+  <change-notes><![CDATA[
+    <ul>
+      <li>Conflict report with per-conflict advice, in-place rebind/remove, and
+          XML export.</li>
+      <li>Bundled <b>MacBook Pro DE</b> keymap for the German (T1) MacBook Pro
+          layout.</li>
+      <li>Report wording adapts to the host IDE (IntelliJ IDEA, PyCharm, GoLand,
+          Android Studio, …).</li>
+    </ul>
+  ]]></change-notes>
 
   <depends>com.intellij.modules.platform</depends>
 
