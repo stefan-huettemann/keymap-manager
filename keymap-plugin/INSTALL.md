@@ -3,9 +3,26 @@
 The plugin ships the **MacBook Pro DE** keymap for all JetBrains IDEs (IntelliJ IDEA,
 PyCharm, CLion, …) on macOS.
 
-## What you need
+---
 
-The plugin ZIP:
+## Part 1 — Install the plugin
+
+Install it in **each IDE** where you want the keymap (each JetBrains IDE manages
+its own plugins). Two ways:
+
+### Option A — From the JetBrains Marketplace (recommended)
+
+1. Open **Settings** (`⌘ ,`) → **Plugins**.
+2. Select the **Marketplace** tab and search for **Manage Keymap Conflicts**.
+3. Click **Install**, then **Restart IDE** when prompted.
+
+No ZIP or build needed, and updates arrive automatically. Because it comes from
+the Marketplace, **Backup and Sync can install it on your other IDEs for you** —
+see Part 3.
+
+### Option B — From disk (a local build, or before it is on the Marketplace)
+
+You need the plugin ZIP:
 
 ```
 keymap-plugin/build/distributions/Manage-Keymap-Conflicts-1.5.0.zip
@@ -18,18 +35,12 @@ cd keymap-plugin
 ./gradlew buildPlugin
 ```
 
----
+Then, in each IDE:
 
-## Part 1 — Install the plugin from disk
-
-Repeat in **each IDE** where you want the keymap (each JetBrains IDE manages its
-own plugins):
-
-1. Open **Settings** (`⌘ ,`).
-2. Go to **Plugins**.
-3. Click the **⚙ gear icon** (top right of the plugin list) → **Install Plugin from Disk…**
-4. Select `Manage-Keymap-Conflicts-1.5.0.zip` → **OK**.
-5. Click **Restart IDE** when prompted.
+1. Open **Settings** (`⌘ ,`) → **Plugins**.
+2. Click the **⚙ gear icon** (top right of the plugin list) → **Install Plugin from Disk…**
+3. Select `Manage-Keymap-Conflicts-1.5.0.zip` → **OK**.
+4. Click **Restart IDE** when prompted.
 
 > Installing the plugin does **not** switch your active keymap — that is Part 2.
 
@@ -62,11 +73,14 @@ JetBrains **Backup and Sync** distributes your settings — including which keym
 is active and any personal shortcut overrides — to every IDE logged into your
 JetBrains account.
 
-> **Important limitation:** Backup and Sync only auto-installs plugins that come
-> from the JetBrains Marketplace. This plugin is installed **from disk**, so sync
-> cannot install it on your other machines/IDEs. Do **Part 1 on every
-> installation first** — otherwise those IDEs won't know the *MacBook Pro DE* keymap
-> and will silently fall back to the default (macOS) keymap.
+> **Plugin distribution depends on how you installed it.** Backup and Sync only
+> auto-installs plugins that come from the JetBrains Marketplace:
+> - **Marketplace install (Option A):** sync installs the plugin on your other
+>   IDEs automatically — nothing else to do.
+> - **From-disk install (Option B):** sync transfers only the keymap *selection*,
+>   not the plugin, so do **Part 1 on every installation first** — otherwise those
+>   IDEs won't know the *MacBook Pro DE* keymap and will silently fall back to the
+>   default (macOS) keymap.
 
 Step by step:
 
@@ -84,7 +98,8 @@ Step by step:
       overwrite your fresh keymap selection.
 2. On **every other installation** (other machine, or another IDE on the same
    machine):
-   1. Install the plugin from disk — Part 1 above.
+   1. Make sure the plugin is installed — Part 1 above. (A Marketplace install may
+      arrive automatically via sync; a from-disk install must be done here manually.)
    2. Enable **Backup and Sync** the same way, logging into the **same JetBrains
       Account**, and choose to **get settings from the account** when asked.
    3. Restart or wait a moment: **Settings → Keymap** should now show
@@ -97,7 +112,7 @@ Step by step:
 | Symptom | Cause / fix |
 |---|---|
 | Keymap dropdown has no *MacBook Pro DE* entry | Plugin not installed or disabled in this IDE. Check **Settings → Plugins → Installed** for *Manage Keymap Conflicts*. |
-| Another installation reverted to the *macOS* keymap | The plugin isn't installed there — sync only transfers the keymap *selection*, not the from-disk plugin. Do Part 1 on that installation. |
+| Another installation reverted to the *macOS* keymap | The plugin isn't installed there. Sync auto-installs Marketplace plugins but not from-disk ones — install it there (Part 1). |
 | Shortcuts behave oddly after an IDE update | Check `Help → Show Log in Finder` (`idea.log`) for `Cannot find parent scheme` or `Cannot find keymaps/...` warnings and reinstall the plugin ZIP. |
 | Want to tweak a shortcut | Just change it in **Settings → Keymap** while *MacBook Pro DE* is active — the IDE stores your change as a personal override on top of the plugin keymap, and Backup and Sync distributes it. |
 
