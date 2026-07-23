@@ -1,6 +1,6 @@
 # 0001 — Filter / view for modified shortcuts
 
-- **Status:** Accepted (extend the plugin; scope/name framing in [0002](0002-plugin-scope-and-name.md))
+- **Status:** In progress — **Phases 1–2 implemented 2026-07-23** (extend the plugin; scope/name framing in [0002](0002-plugin-scope-and-name.md))
 - **Source:** [IJPL-228176 — "Add filter for modified shortcuts in Keymap settings"](https://youtrack.jetbrains.com/issue/IJPL-228176)
 - **Date:** 2026-07-23
 
@@ -96,12 +96,12 @@ new work is (a) a per-action "is this modified?" predicate wired to the UI, and
 Delivered as a **new view/section inside the existing report dialog**, not a new
 window. Phased so each step is shippable on its own.
 
-### Phase 1 — surface the count (smallest useful step)
+### Phase 1 — surface the count (smallest useful step) — ✅ done 2026-07-23
 - The summary line already knows the modified count (§3, line 967). Show it:
   *"N shortcuts modified vs the default keymap."*
 - Zero new data model; pure display. Validates the framing with users cheaply.
 
-### Phase 2 — a "Modified shortcuts" section/view
+### Phase 2 — a "Modified shortcuts" section/view — ✅ done 2026-07-23
 - Add a `modified` list to `ConflictScan` (or a sibling scan): for the selected
   keymap, the action ids in `writeScheme().getChildren("action")`, each resolved
   to name/source/current-binding via the existing `refs(...)` path.
@@ -204,3 +204,24 @@ questions are not *whether* but *how we frame it* — the broadened scope statem
 and a possible plugin rename — tracked in
 [0002](0002-plugin-scope-and-name.md). Implementation is not blocked on the name;
 Phases 1–2 can start once 0002's scope statement is agreed.
+
+## 7. Implementation notes (Phases 1–2, 2026-07-23)
+
+Landed as a read-only audit view; no revert yet (that is Phase 3).
+
+- **`ConflictScan`** — new `record ModifiedBinding(ActionRef action, List<Shortcut> shortcuts)`
+  and a `modified` list on the scan, computed in `modifiedBindings(keymap)` from
+  `KeymapImpl.writeScheme().getChildren("action")` (the same own-declarations set the
+  export's CHANGES category uses), resolved through the existing `refs(...)`. An empty
+  shortcut list = a cleared inherited binding.
+- **`ConflictReportDialog`**
+  - *Phase 1:* `updateSummary()` appends "N shortcut(s) modified in this keymap."
+  - *Phase 2:* `SEC_MODIFIED` section + `ModifiedItem` payload; `buildRoot()` gates the
+    conflict sections behind `showModifiedOnly` and always appends the Modified section;
+    `Renderer.renderModified` and `buildModifiedDetail` render the rows/detail; a
+    **"Show modified only"** gear toggle (`showModifiedOnly` + `rebuildTree()`) filters to
+    just this section. Expansion/selection generalized via `shouldExpand` / `selectFirstRow`.
+- The Modified section is informational (collapsed by default) except in "Show modified only"
+  mode. For the bundled *MacBook Pro DE* the count is large (it re-states its bindings); for a
+  derived/user keymap it shows just the handful of changes — the intended audit case.
+- Verified: IDE rebuild + `./gradlew buildPlugin` both clean. Not yet exercised in `runIde`.

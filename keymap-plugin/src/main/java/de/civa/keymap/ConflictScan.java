@@ -9,6 +9,8 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.KeymapUtil;
+import com.intellij.openapi.keymap.impl.KeymapImpl;
+import org.jdom.Element;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.KeyStroke;
@@ -75,18 +77,25 @@ final class ConflictScan {
   /** One shortcut bound to more than one distinct action inside the keymap (aliases filtered out). */
   record InternalConflict(Shortcut shortcut, List<ActionRef> actions) {}
 
+  /** A binding this keymap declares itself — its diff against the parent (via {@link KeymapImpl#writeScheme()}).
+   *  An empty {@code shortcuts} list means the inherited binding is cleared here. */
+  record ModifiedBinding(ActionRef action, List<Shortcut> shortcuts) {}
+
   final boolean jbrApiAvailable;
   /** True only for the keymap this plugin bundles or a copy of it — gates the curated extras. */
   final boolean ownKeymap;
   final List<ExternalConflict> keymapConflicts;
   final List<InternalConflict> internal;
+  /** Bindings this keymap declares itself (its diff against the parent). */
+  final List<ModifiedBinding> modified;
 
-  private ConflictScan(boolean jbrApiAvailable, boolean ownKeymap,
-                       List<ExternalConflict> keymapConflicts, List<InternalConflict> internal) {
+  private ConflictScan(boolean jbrApiAvailable, boolean ownKeymap, List<ExternalConflict> keymapConflicts,
+                       List<InternalConflict> internal, List<ModifiedBinding> modified) {
     this.jbrApiAvailable = jbrApiAvailable;
     this.ownKeymap = ownKeymap;
     this.keymapConflicts = keymapConflicts;
     this.internal = internal;
+    this.modified = modified;
   }
 
   static ConflictScan of(Keymap keymap) {
@@ -130,7 +139,7 @@ final class ConflictScan {
       .thenComparing(c -> KeymapUtil.getShortcutText(c.shortcut())));
 
     return new ConflictScan(system != null, isOurKeymap(keymap),
-      List.copyOf(keymapConflicts), List.copyOf(internal));
+      List.copyOf(keymapConflicts), List.copyOf(internal), List.copyOf(modifiedBindings(keymap)));
   }
 
   private static Comparator<ExternalConflict> externalOrder() {
@@ -161,6 +170,23 @@ final class ConflictScan {
         description = action.getTemplatePresentation().getDescription();
       }
       result.add(new ActionRef(id, name, source, description));
+    }
+    return result;
+  }
+
+  /** Bindings this keymap declares itself — its diff against the parent, via {@link KeymapImpl#writeScheme()}.
+   *  Cleared inherited bindings are included (an empty own-declaration yields an empty shortcut list). */
+  private static List<ModifiedBinding> modifiedBindings(Keymap keymap) {
+    if (!(keymap instanceof KeymapImpl impl)) return List.of();
+    List<String> ids = new ArrayList<>();
+    for (Object child : impl.writeScheme().getChildren("action")) {
+      String id = ((Element) child).getAttributeValue("id");
+      if (id != null && !id.isEmpty()) ids.add(id);
+    }
+    List<String> sorted = ids.stream().distinct().sorted().toList();
+    List<ModifiedBinding> result = new ArrayList<>(sorted.size());
+    for (ActionRef ref : refs(sorted)) {
+      result.add(new ModifiedBinding(ref, List.of(keymap.getShortcuts(ref.id()))));
     }
     return result;
   }

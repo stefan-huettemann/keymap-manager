@@ -162,6 +162,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   private JBScrollPane detailScroll;  // scroll host, also the width source for wrapped text
   private Object currentPayload;      // the tree row the detail currently shows (for re-render)
   private boolean showActionIds;      // gear toggle: show the internal action id next to each name
+  private boolean showModifiedOnly;   // gear toggle: show only the "Modified shortcuts" section
   private JBLabel summaryText;
   private JBLabel summaryIcon;
   private ComboBox<Keymap> keymapCombo;
@@ -186,6 +187,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   private static final String SEC_KEYMAP = "Keymap conflicts";
   private static final String SEC_IDEA_IGNORED = "Overlaps {ide} doesn't flag";
   private static final String SEC_DOUBLE = "Double-bound keys — informational, not conflicts";
+  private static final String SEC_MODIFIED = "Modified shortcuts — differ from the parent keymap";
 
   /** macOS shortcut ids IntelliJ's own keymap tool deliberately excludes from its conflict banner. */
   private static final Set<String> IDEA_IGNORED_IDS = Set.of("FocusNextApplicationWindow", "FocusPreviousApplicationWindow");
@@ -195,6 +197,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   private record Empty(String message) {}
   private record KeymapItem(ConflictScan.ExternalConflict c) {}
   private record IdeaIgnoredItem(ConflictScan.ExternalConflict c) {}
+  private record ModifiedItem(ConflictScan.ModifiedBinding m) {}
 
   @Override
   protected JComponent createCenterPanel() {
@@ -224,7 +227,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     });
 
     expandActionableSections();
-    selectFirstConflict();
+    selectFirstRow();
 
     // Details pane: the tree navigator and its per-row explanation.
     OnePixelSplitter splitter = new OnePixelSplitter(false, 0.44f);
@@ -323,6 +326,14 @@ public final class ConflictReportDialog extends DialogWrapper {
       menuAction("Rename…", true, this::startRename),
       menuAction("Delete…", true, this::deleteKeymap));
     group.addSeparator();
+    group.add(new ToggleAction("Show modified only") {
+      @Override public boolean isSelected(@NotNull AnActionEvent e) { return showModifiedOnly; }
+      @Override public void setSelected(@NotNull AnActionEvent e, boolean state) {
+        showModifiedOnly = state;
+        rebuildTree();   // the scan is unchanged; just re-shape the tree to the new filter
+      }
+      @Override public ActionUpdateThread getActionUpdateThread() { return ActionUpdateThread.EDT; }
+    });
     group.add(new ToggleAction("Show Action IDs") {
       @Override public boolean isSelected(@NotNull AnActionEvent e) { return showActionIds; }
       @Override public void setSelected(@NotNull AnActionEvent e, boolean state) {
@@ -606,35 +617,47 @@ public final class ConflictReportDialog extends DialogWrapper {
   private DefaultMutableTreeNode buildRoot() {
     DefaultMutableTreeNode root = new DefaultMutableTreeNode();
 
-    // Window-switching overlaps IntelliJ's own tool ignores go in a low-priority section; the rest
-    // are this keymap's conflicts (its whole effective set — inherited bindings included).
-    List<ConflictScan.ExternalConflict> normal = scan.keymapConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
-    List<ConflictScan.ExternalConflict> ignored = scan.keymapConflicts.stream().filter(c -> ideaIgnored(c)).toList();
+    // "Show modified only" hides the conflict sections and leaves just the Modified-shortcuts audit view.
+    if (!showModifiedOnly) {
+      // Window-switching overlaps IntelliJ's own tool ignores go in a low-priority section; the rest
+      // are this keymap's conflicts (its whole effective set — inherited bindings included).
+      List<ConflictScan.ExternalConflict> normal = scan.keymapConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
+      List<ConflictScan.ExternalConflict> ignored = scan.keymapConflicts.stream().filter(c -> ideaIgnored(c)).toList();
 
-    DefaultMutableTreeNode keymapNode = new DefaultMutableTreeNode(new Section(SEC_KEYMAP, normal.size()));
-    if (!scan.jbrApiAvailable) {
-      keymapNode.add(new DefaultMutableTreeNode(new Empty("macOS scan unavailable on this runtime.")));
-    }
-    else if (normal.isEmpty()) {
-      keymapNode.add(new DefaultMutableTreeNode(new Empty("No conflicts with macOS. Nothing to change.")));
-    }
-    for (ConflictScan.ExternalConflict c : normal) keymapNode.add(new DefaultMutableTreeNode(new KeymapItem(c)));
-    root.add(keymapNode);
+      DefaultMutableTreeNode keymapNode = new DefaultMutableTreeNode(new Section(SEC_KEYMAP, normal.size()));
+      if (!scan.jbrApiAvailable) {
+        keymapNode.add(new DefaultMutableTreeNode(new Empty("macOS scan unavailable on this runtime.")));
+      }
+      else if (normal.isEmpty()) {
+        keymapNode.add(new DefaultMutableTreeNode(new Empty("No conflicts with macOS. Nothing to change.")));
+      }
+      for (ConflictScan.ExternalConflict c : normal) keymapNode.add(new DefaultMutableTreeNode(new KeymapItem(c)));
+      root.add(keymapNode);
 
-    // "Overlaps IntelliJ doesn't flag": window-switch overlaps IntelliJ gets first, plus the curated
-    // SUPPLEMENT notes (macOS features the live scan can't see) — all keep working, shown for completeness.
-    List<ConflictAdvice.Supplement> supplements = scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.of();
-    if (!ignored.isEmpty() || !supplements.isEmpty()) {
-      DefaultMutableTreeNode node = new DefaultMutableTreeNode(
-        new Section(SEC_IDEA_IGNORED, ignored.size() + supplements.size()));
-      for (ConflictScan.ExternalConflict c : ignored) node.add(new DefaultMutableTreeNode(new IdeaIgnoredItem(c)));
-      for (ConflictAdvice.Supplement s : supplements) node.add(new DefaultMutableTreeNode(s));
-      root.add(node);
+      // "Overlaps IntelliJ doesn't flag": window-switch overlaps IntelliJ gets first, plus the curated
+      // SUPPLEMENT notes (macOS features the live scan can't see) — all keep working, shown for completeness.
+      List<ConflictAdvice.Supplement> supplements = scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.of();
+      if (!ignored.isEmpty() || !supplements.isEmpty()) {
+        DefaultMutableTreeNode node = new DefaultMutableTreeNode(
+          new Section(SEC_IDEA_IGNORED, ignored.size() + supplements.size()));
+        for (ConflictScan.ExternalConflict c : ignored) node.add(new DefaultMutableTreeNode(new IdeaIgnoredItem(c)));
+        for (ConflictAdvice.Supplement s : supplements) node.add(new DefaultMutableTreeNode(s));
+        root.add(node);
+      }
+
+      DefaultMutableTreeNode dbl = new DefaultMutableTreeNode(new Section(SEC_DOUBLE, scan.internal.size()));
+      for (ConflictScan.InternalConflict c : scan.internal) dbl.add(new DefaultMutableTreeNode(c));
+      root.add(dbl);
     }
 
-    DefaultMutableTreeNode dbl = new DefaultMutableTreeNode(new Section(SEC_DOUBLE, scan.internal.size()));
-    for (ConflictScan.InternalConflict c : scan.internal) dbl.add(new DefaultMutableTreeNode(c));
-    root.add(dbl);
+    // Modified shortcuts — this keymap's own declarations (its diff vs the parent). Always present; the
+    // only section when "Show modified only" is on. Informational, collapsed by default otherwise.
+    DefaultMutableTreeNode mod = new DefaultMutableTreeNode(new Section(SEC_MODIFIED, scan.modified.size()));
+    if (scan.modified.isEmpty()) {
+      mod.add(new DefaultMutableTreeNode(new Empty("This keymap declares no shortcuts of its own.")));
+    }
+    for (ConflictScan.ModifiedBinding m : scan.modified) mod.add(new DefaultMutableTreeNode(new ModifiedItem(m)));
+    root.add(mod);
 
     return root;
   }
@@ -650,28 +673,32 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   private void refresh() {
     scan = ConflictScan.of(keymap);
-    tree.setModel(new DefaultTreeModel(buildRoot()));
-    expandActionableSections();
-    selectFirstConflict();
+    rebuildTree();
     updateSummary();
   }
 
-  /** Expand the actionable sections; leave the informational ones (double-bound, IntelliJ-ignored) collapsed. */
+  /** Re-shape the tree from the current scan (no re-scan) — used when only the view filter changes. */
+  private void rebuildTree() {
+    tree.setModel(new DefaultTreeModel(buildRoot()));
+    expandActionableSections();
+    selectFirstRow();
+  }
+
+  /** Expand the sections worth opening: normally the actionable conflict sections (informational ones
+   *  stay collapsed); in "Show modified only" mode, the Modified-shortcuts section itself. */
   private void expandActionableSections() {
     DefaultMutableTreeNode root = (DefaultMutableTreeNode) tree.getModel().getRoot();
     for (int i = 0; i < root.getChildCount(); i++) {
       DefaultMutableTreeNode section = (DefaultMutableTreeNode) root.getChildAt(i);
-      if (isInformationalSection(section.getUserObject())) continue;
-      tree.expandPath(new TreePath(section.getPath()));
+      if (shouldExpand(section.getUserObject())) tree.expandPath(new TreePath(section.getPath()));
     }
   }
 
-  private void selectFirstConflict() {
+  private void selectFirstRow() {
     DefaultMutableTreeNode root = (DefaultMutableTreeNode) tree.getModel().getRoot();
     for (int i = 0; i < root.getChildCount(); i++) {
       DefaultMutableTreeNode section = (DefaultMutableTreeNode) root.getChildAt(i);
-      if (isInformationalSection(section.getUserObject())) continue;
-      if (section.getChildCount() > 0) {
+      if (shouldExpand(section.getUserObject()) && section.getChildCount() > 0) {
         DefaultMutableTreeNode first = (DefaultMutableTreeNode) section.getFirstChild();
         tree.setSelectionPath(new TreePath(first.getPath()));
         return;
@@ -679,8 +706,19 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
   }
 
+  /** Which sections open and hold the initial selection: the Modified section alone when "Show modified
+   *  only" is on, otherwise every non-informational (actionable) section. */
+  private boolean shouldExpand(Object payload) {
+    return isModifiedSection(payload) ? showModifiedOnly : !showModifiedOnly && !isInformationalSection(payload);
+  }
+
   private static boolean isInformationalSection(Object payload) {
-    return payload instanceof Section s && (s.title().equals(SEC_DOUBLE) || s.title().equals(SEC_IDEA_IGNORED));
+    return payload instanceof Section s
+      && (s.title().equals(SEC_DOUBLE) || s.title().equals(SEC_IDEA_IGNORED) || s.title().equals(SEC_MODIFIED));
+  }
+
+  private static boolean isModifiedSection(Object payload) {
+    return payload instanceof Section s && s.title().equals(SEC_MODIFIED);
   }
 
   private @Nullable Object payloadOf(@Nullable TreePath path) {
@@ -802,6 +840,10 @@ public final class ConflictReportDialog extends DialogWrapper {
       text = "<b>" + broken + " shortcut(s) need attention</b> — macOS takes the key first. "
         + (total - broken) + " more overlap but keep working.";
       icon = AllIcons.General.Warning;
+    }
+    if (!scan.modified.isEmpty()) {
+      text += "&nbsp;&nbsp;<span style='color:" + hex(grayColour()) + "'>·&nbsp;&nbsp;"
+        + scan.modified.size() + " shortcut(s) modified in this keymap.</span>";
     }
     summaryText.setText("<html>" + text + "</html>");
     summaryIcon.setIcon(icon);
@@ -1372,6 +1414,9 @@ public final class ConflictReportDialog extends DialogWrapper {
     else if (payload instanceof ConflictScan.InternalConflict c) {
       buildInternalDetail(c);
     }
+    else if (payload instanceof ModifiedItem mi) {
+      buildModifiedDetail(mi.m());
+    }
     detailPanel.revalidate();
     detailPanel.repaint();
     SwingUtilities.invokeLater(() -> detailScroll.getVerticalScrollBar().setValue(0));
@@ -1401,6 +1446,35 @@ public final class ConflictReportDialog extends DialogWrapper {
     detailPanel.add(list);
     addBlock(linksRow(first, c.actions(), list));
     addHtml(callout("What to do", escape(internalNote(c))));
+  }
+
+  /** A shortcut this keymap declares itself (differs from the parent). An audit view: it shows the
+   *  action, its binding and source. Rebinding/reverting from here is a later step. */
+  private void buildModifiedDetail(ConflictScan.ModifiedBinding m) {
+    ConflictScan.ActionRef a = m.action();
+    boolean cleared = m.shortcuts().isEmpty();
+    String header = cleared ? "— (inherited binding cleared)" : shortcutsText(m.shortcuts());
+    String body = cleared
+      ? "This keymap removes a shortcut it would otherwise inherit from the parent keymap."
+      : "This keymap declares this shortcut itself, so it differs from the parent keymap it inherits from.";
+    addHtml(shortcutHeader(header)
+      + factRow("Action", escape(actionLabelWithId(a)))
+      + (a.source() != null ? factRow("Source", escape(a.source())) : "")
+      + callout("What this is", escape(body)));
+    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
+    row.setOpaque(false);
+    row.add(new ActionLink("Open Keymap settings", (ActionListener) e -> openKeymapSettings()));
+    addBlock(row);
+  }
+
+  /** Action name, plus its id in parentheses when the "Show Action IDs" toggle is on. */
+  private String actionLabelWithId(ConflictScan.ActionRef a) {
+    return showActionIds ? a.label() + "  (" + a.id() + ")" : a.label();
+  }
+
+  /** Comma-joined rendering of a set of shortcuts (empty string when there are none). */
+  private static String shortcutsText(List<Shortcut> shortcuts) {
+    return String.join(", ", shortcuts.stream().map(KeymapUtil::getShortcutText).toList());
   }
 
   // ---- detail: Swing building blocks ----------------------------------------------------------
@@ -1629,6 +1703,11 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "live scan can't see (the Emoji viewer, Dictation). All keep working and are listed for "
         + "completeness. The window-switch ones can still be changed; the scan-invisible notes cannot.";
     }
+    if (title.equals(SEC_MODIFIED)) {
+      return "Shortcuts this keymap declares itself — the ones that differ from its parent keymap "
+        + "(added, rebound, or a cleared inherited binding). Use it to review what has been customized. "
+        + "Turn on “Show modified only” in the gear menu to hide the conflict sections and see just these.";
+    }
     return "One shortcut bound to several actions inside the keymap. Not a conflict — {ide} "
       + "picks the action that fits where you are. Shown for reference only.";
   }
@@ -1828,6 +1907,16 @@ public final class ConflictReportDialog extends DialogWrapper {
         append(KeymapUtil.getShortcutText(c.shortcut()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
         append("  " + c.actions().size() + " actions", SimpleTextAttributes.GRAYED_ATTRIBUTES);
       }
+      else if (p instanceof ModifiedItem mi) {
+        renderModified(mi.m());
+      }
+    }
+
+    private void renderModified(ConflictScan.ModifiedBinding m) {
+      setIcon(AllIcons.General.Information);
+      String keys = shortcutsText(m.shortcuts());
+      append(m.action().label(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
+      append("  " + (keys.isEmpty() ? "(removed)" : keys), SimpleTextAttributes.GRAYED_ATTRIBUTES);
     }
 
     private void renderConflict(ConflictScan.ExternalConflict c) {
