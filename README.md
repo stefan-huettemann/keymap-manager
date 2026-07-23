@@ -17,10 +17,12 @@ physically unpressable on a German (T1) layout — this keymap replaces them wit
 ```bash
 cd keymap-plugin
 ./gradlew buildPlugin
-# → build/distributions/Manage-Keymap-Conflicts-1.5.0.zip
+# → build/distributions/Manage-Keymap-Conflicts-1.6.0.zip
 ```
 
 Installation and settings-sync setup: [`keymap-plugin/INSTALL.md`](keymap-plugin/INSTALL.md)
+
+Releasing to the JetBrains Marketplace: [`PUBLISHING.md`](PUBLISHING.md)
 
 ## Repository layout
 

@@ -1,0 +1,11 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- keycap -->
+  <rect x="6" y="13" width="20" height="20" rx="4.5" fill="#FBFBFB" stroke="#3C3F41" stroke-width="2" stroke-linejoin="round"/>
+  <rect x="8.5" y="15.5" width="15" height="12.5" rx="2.5" fill="#EBEDF0"/>
+  <!-- ⌘ command glyph, drawn as one looped-square path so it renders without a font -->
+  <path d="M 14.9 19 L 14.9 25 A 1.9 1.9 0 1 1 13 23.1 L 19 23.1 A 1.9 1.9 0 1 1 17.1 25 L 17.1 19 A 1.9 1.9 0 1 1 19 20.9 L 13 20.9 A 1.9 1.9 0 1 1 14.9 19 Z"
+        fill="none" stroke="#3C3F41" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- shortcut / conflict badge -->
+  <circle cx="30" cy="12" r="7.5" fill="#EE6E33"/>
+  <path d="M31 6.5 L26.5 12.5 L29.5 12.5 L29 17.5 L33.5 11 L30.5 11 Z" fill="#FFFFFF"/>
+</svg>
