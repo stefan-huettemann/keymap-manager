@@ -2,6 +2,8 @@
 
 Development workspace for JetBrains IDE plugins.
 
+**Repository:** https://github.com/stefan-huettemann/manage-keymap-conflicts
+
 ## Plugins
 
 ### Manage Keymap Conflicts (`keymap-plugin/`)

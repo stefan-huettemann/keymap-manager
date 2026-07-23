@@ -20,6 +20,8 @@
     <br/><br/>
     macOS-focused: the conflict scan reads the JetBrains Runtime's live
     system-shortcut table (the same source as the IDE's own conflict banner).
+    <br/><br/>
+    <b>Source code:</b> <a href="https://github.com/stefan-huettemann/manage-keymap-conflicts">github.com/stefan-huettemann/manage-keymap-conflicts</a>
   ]]></description>
 
   <change-notes><![CDATA[
