@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * ({@code com.sun.awt.use.national.layouts}, on by default on macOS) is enabled.
  * Warns when the keymap is selected while that support is off, and offers the same
  * fix the Settings → Keymap checkbox applies: persist the setting, write the VM
- * option, restart. Also surfaces a "Review keymap conflicts" action that opens a
+ * option, restart. Also surfaces an "Open Keymap Manager" action that opens a
  * live, grouped, explained conflict report ({@link ConflictScan}) — a friendlier
  * take on IDEA's bare "N conflicts with macOS" count.
  */
@@ -71,7 +71,7 @@ public final class NationalLayoutCheck implements KeymapManagerListener, AppLife
       .createNotification(
         layoutOff
           ? "MacBook Pro DE keymap needs national keyboard layout support"
-          : "Manage keymap conflicts",
+          : "Keymap Manager",
         layoutOff
           ? "This keymap binds keys of the German layout (Ä Ö Ü ß + # <), which only work while " +
             "\"Use national keyboard layouts for shortcuts\" is enabled (Settings → Keymap). " +
@@ -83,7 +83,7 @@ public final class NationalLayoutCheck implements KeymapManagerListener, AppLife
     if (layoutOff) {
       notification.addAction(NotificationAction.createSimple("Enable and restart", () -> enableAndRestart(notification)));
     }
-    notification.addAction(new NotificationAction("Manage keymap conflicts") {
+    notification.addAction(new NotificationAction("Open Keymap Manager") {
       @Override
       public void actionPerformed(@NotNull AnActionEvent e, @NotNull Notification n) {
         new ConflictReportDialog(e.getProject()).show();

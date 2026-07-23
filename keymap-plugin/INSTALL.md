@@ -1,4 +1,4 @@
-# Installing the Manage Keymap Conflicts Plugin
+# Installing the Keymap Manager Plugin
 
 The plugin ships the **MacBook Pro DE** keymap for all JetBrains IDEs (IntelliJ IDEA,
 PyCharm, CLion, …) on macOS.
@@ -13,7 +13,7 @@ its own plugins). Two ways:
 ### Option A — From the JetBrains Marketplace (recommended)
 
 1. Open **Settings** (`⌘ ,`) → **Plugins**.
-2. Select the **Marketplace** tab and search for **Manage Keymap Conflicts**.
+2. Select the **Marketplace** tab and search for **Keymap Manager**.
 3. Click **Install**, then **Restart IDE** when prompted.
 
 No ZIP or build needed, and updates arrive automatically. Because it comes from
@@ -25,7 +25,7 @@ see Part 3.
 You need the plugin ZIP:
 
 ```
-keymap-plugin/build/distributions/Manage-Keymap-Conflicts-1.5.0.zip
+keymap-plugin/build/distributions/Keymap-Manager-1.6.0.zip
 ```
 
 If it is missing, rebuild it:
@@ -39,7 +39,7 @@ Then, in each IDE:
 
 1. Open **Settings** (`⌘ ,`) → **Plugins**.
 2. Click the **⚙ gear icon** (top right of the plugin list) → **Install Plugin from Disk…**
-3. Select `Manage-Keymap-Conflicts-1.5.0.zip` → **OK**.
+3. Select `Keymap-Manager-1.6.0.zip` → **OK**.
 4. Click **Restart IDE** when prompted.
 
 > Installing the plugin does **not** switch your active keymap — that is Part 2.
@@ -60,8 +60,8 @@ Verify: the dropdown shows *MacBook Pro DE*, and e.g. `⌘⇧G` triggers *Find P
 
 > **macOS shortcut conflicts.** IDEA may report that a few shortcuts also belong to
 > macOS. Most are intentional (window cycling, emoji picker, standard app shortcuts).
-> When the keymap is activated, the plugin (1.2.0+) offers a **Manage keymap conflicts**
-> action (also under **Tools → Manage Keymap Conflicts**) that opens a grouped, explained
+> When the keymap is activated, the plugin (1.2.0+) offers an **Open Keymap Manager**
+> action (also under **Tools → Keymap Manager**) that opens a grouped, explained
 > report of which overlaps are by design and which depend on your macOS settings, where you
 > can rebind or remove them in place.
 
@@ -111,7 +111,7 @@ Step by step:
 
 | Symptom | Cause / fix |
 |---|---|
-| Keymap dropdown has no *MacBook Pro DE* entry | Plugin not installed or disabled in this IDE. Check **Settings → Plugins → Installed** for *Manage Keymap Conflicts*. |
+| Keymap dropdown has no *MacBook Pro DE* entry | Plugin not installed or disabled in this IDE. Check **Settings → Plugins → Installed** for *Keymap Manager*. |
 | Another installation reverted to the *macOS* keymap | The plugin isn't installed there. Sync auto-installs Marketplace plugins but not from-disk ones — install it there (Part 1). |
 | Shortcuts behave oddly after an IDE update | Check `Help → Show Log in Finder` (`idea.log`) for `Cannot find parent scheme` or `Cannot find keymaps/...` warnings and reinstall the plugin ZIP. |
 | Want to tweak a shortcut | Just change it in **Settings → Keymap** while *MacBook Pro DE* is active — the IDE stores your change as a personal override on top of the plugin keymap, and Backup and Sync distributes it. |

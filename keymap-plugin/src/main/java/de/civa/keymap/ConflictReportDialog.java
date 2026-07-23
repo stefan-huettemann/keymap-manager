@@ -177,7 +177,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     active = KeymapManager.getInstance().getActiveKeymap();
     keymap = active;
     scan = ConflictScan.of(keymap);
-    setTitle("Manage Keymap Conflicts");
+    setTitle("Keymap Manager");
     setResizable(true);
     init();
   }
@@ -732,7 +732,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   private final class HelpDialog extends DialogWrapper {
     HelpDialog() {
       super(project);
-      setTitle("About Manage Keymap Conflicts");
+      setTitle("About Keymap Manager");
       init();
     }
 

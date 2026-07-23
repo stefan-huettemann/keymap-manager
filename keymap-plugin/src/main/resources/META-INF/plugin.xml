@@ -1,28 +1,41 @@
 <idea-plugin>
   <id>de.civa.plugins.keymapmanager</id>
-  <name>Manage Keymap Conflicts</name>
+  <name>Keymap Manager</name>
   <vendor email="stefan.huettemann@civa.de" url="https://civa.de">CIVA</vendor>
 
   <description><![CDATA[
-    <b>Find and resolve keyboard-shortcut conflicts</b> in your macOS keymaps —
-    shortcuts that clash with macOS system shortcuts, and duplicate bindings
-    within a keymap. A live, grouped report explains each overlap (whether your
-    IDE still wins the key or macOS takes it first) and lets you rebind or
-    remove the shortcut in place, or export and import keymaps as XML to share
-    them. Open it any time from
-    <b>Tools &rarr; Manage Keymap Conflicts…</b> or Find Action.
+    <b>Manage your JetBrains keymaps and resolve keyboard-shortcut conflicts</b>
+    on macOS. Open it from <b>Tools &rarr; Keymap Manager…</b> or Find Action.
     <br/><br/>
-    It also bundles the <b>MacBook Pro DE</b> keymap as a ready-made starting
-    point: a macOS keymap tuned for MacBook Pro keyboards with the German (T1)
-    layout, avoiding shortcuts that are physically unpressable there (keys like
-    <code>/ = ; ' ` [ ]</code> are only Shift/Option chords on that layout, and
-    there is no numpad or Insert key). Select it under
-    <b>Settings &rarr; Keymap</b>.
+    <b>What it does</b>
+    <ul>
+      <li><b>Find conflicts</b> — a live, grouped report of every shortcut that
+          clashes with a <b>macOS system shortcut</b> (read from the JetBrains
+          Runtime's live system-shortcut table, the same source as the IDE's own
+          conflict banner), plus <b>double-bound keys</b> (one keystroke on
+          several actions) and a separate section for macOS overlaps the IDE
+          doesn't flag. Each conflict is explained — whether your IDE still wins
+          the key or macOS takes it first — with tailored advice.</li>
+      <li><b>Fix in place</b> — <b>rebind</b> or <b>remove</b> a shortcut straight
+          from the report. The rebind field captures a real keypress (even
+          IDE-bound combos) and supports German keys (Ä Ö Ü ß), with a live
+          green/red check for macOS overlaps and existing bindings.</li>
+      <li><b>Manage keymaps</b> — pick any installed keymap, then
+          <b>activate</b>, <b>duplicate</b>, <b>rename</b> or <b>delete</b> it.</li>
+      <li><b>Import / export</b> keymaps as XML — the whole inheritance chain, or
+          selected categories (conflicts, overlaps, double-bound keys, or just
+          your changes versus the parent keymap).</li>
+    </ul>
+    <b>Bundled keymap</b> — includes <b>MacBook Pro DE</b>, a macOS keymap tuned
+    for MacBook Pro keyboards with the German (T1) layout, avoiding shortcuts that
+    are physically unpressable there (keys like <code>/ = ; ' ` [ ]</code> are
+    only Shift/Option chords, and there is no numpad or Insert key). Select it
+    under <b>Settings &rarr; Keymap</b>.
     <br/><br/>
-    macOS-focused: the conflict scan reads the JetBrains Runtime's live
-    system-shortcut table (the same source as the IDE's own conflict banner).
+    <b>macOS-focused.</b> Report wording adapts to the host IDE (IntelliJ IDEA,
+    PyCharm, GoLand, Android Studio, …).
     <br/><br/>
-    <b>Source code:</b> <a href="https://github.com/stefan-huettemann/manage-keymap-conflicts">github.com/stefan-huettemann/manage-keymap-conflicts</a>
+    <b>Source code:</b> <a href="https://github.com/stefan-huettemann/keymap-manager">github.com/stefan-huettemann/keymap-manager</a>
   ]]></description>
 
   <change-notes><![CDATA[
@@ -49,8 +62,8 @@
   <actions>
     <action id="de.civa.keymap.ShowConflictReport"
             class="de.civa.keymap.ShowConflictReportAction"
-            text="Manage Keymap Conflicts…"
-            description="Manage a keymap's shortcut conflicts with macOS and within the keymap">
+            text="Keymap Manager…"
+            description="Manage keymaps and resolve shortcut conflicts with macOS and within the keymap">
       <add-to-group group-id="ToolsMenu" anchor="last"/>
     </action>
   </actions>

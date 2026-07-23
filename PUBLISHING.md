@@ -1,6 +1,6 @@
 # Publishing to the JetBrains Marketplace
 
-How to register and release **Manage Keymap Conflicts** (`de.civa.plugins.keymapmanager`) on the
+How to register and release **Keymap Manager** (`de.civa.plugins.keymapmanager`) on the
 [JetBrains Marketplace](https://plugins.jetbrains.com). All Gradle commands run from `keymap-plugin/`.
 
 ## What's already set up
@@ -27,7 +27,7 @@ How to register and release **Manage Keymap Conflicts** (`de.civa.plugins.keymap
 
 ```bash
 cd keymap-plugin
-./gradlew buildPlugin      # → build/distributions/Manage-Keymap-Conflicts-<version>.zip
+./gradlew buildPlugin      # → build/distributions/Keymap-Manager-<version>.zip
 ./gradlew verifyPlugin     # verdict under build/reports/pluginVerifier/<IDE>/…/verification-verdict.txt
 ```
 
@@ -39,7 +39,7 @@ The **first version of a plugin always goes through manual moderation** by JetBr
 with `publishPlugin`.
 
 1. Go to <https://plugins.jetbrains.com> → your profile → **Upload plugin**.
-2. Upload `keymap-plugin/build/distributions/Manage-Keymap-Conflicts-<version>.zip`.
+2. Upload `keymap-plugin/build/distributions/Keymap-Manager-<version>.zip`.
 3. Set the **License** (e.g. free / your chosen license) and pick a **Category** (closest fit:
    *User Interface* or *Tools Integration* — editable later).
 4. Submit. Marketplace runs its automated Plugin Verifier and a reviewer checks the submission

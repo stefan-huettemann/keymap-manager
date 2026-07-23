@@ -1,1 +1,1 @@
-rootProject.name = "Manage-Keymap-Conflicts"
+rootProject.name = "Keymap-Manager"

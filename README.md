@@ -2,11 +2,11 @@
 
 Development workspace for JetBrains IDE plugins.
 
-**Repository:** https://github.com/stefan-huettemann/manage-keymap-conflicts
+**Repository:** https://github.com/stefan-huettemann/keymap-manager
 
 ## Plugins
 
-### Manage Keymap Conflicts (`keymap-plugin/`)
+### Keymap Manager (`keymap-plugin/`)
 
 Plugin for **managing keymap shortcut conflicts** on macOS — a live, explained report of
 overlaps with macOS system shortcuts and duplicate in-keymap bindings, with in-place
@@ -17,7 +17,7 @@ physically unpressable on a German (T1) layout — this keymap replaces them wit
 ```bash
 cd keymap-plugin
 ./gradlew buildPlugin
-# → build/distributions/Manage-Keymap-Conflicts-1.6.0.zip
+# → build/distributions/Keymap-Manager-1.6.0.zip
 ```
 
 Installation and settings-sync setup: [`keymap-plugin/INSTALL.md`](keymap-plugin/INSTALL.md)
