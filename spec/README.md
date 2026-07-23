@@ -27,5 +27,10 @@ It complements the other docs, it does not replace them:
 
 | # | Title | Source | Status |
 |---|-------|--------|--------|
-| [0001](0001-modified-shortcuts-filter.md) | Filter / view for modified shortcuts | [IJPL-228176](https://youtrack.jetbrains.com/issue/IJPL-228176) | Accepted |
+| [0001](0001-modified-shortcuts-filter.md) | Filter / view for modified shortcuts | [IJPL-228176](https://youtrack.jetbrains.com/issue/IJPL-228176) | Implemented |
 | [0002](0002-plugin-scope-and-name.md) | Plugin scope and name | internal (triggered by 0001) | Accepted |
+
+## Backlog
+
+Candidate features not yet scheduled live in [BACKLOG.md](BACKLOG.md). When one
+is picked up it graduates to a numbered spec here.
