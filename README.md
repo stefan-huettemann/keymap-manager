@@ -10,7 +10,7 @@ Development workspace for JetBrains IDE plugins.
 
 Plugin for **managing keymap shortcut conflicts** on macOS — a live, explained report of
 overlaps with macOS system shortcuts and duplicate in-keymap bindings, with in-place
-rebind/remove and XML export. It also bundles the **MacBook Pro DE** keymap as a ready-made
+rebind/remove and XML export/import for sharing keymaps. It also bundles the **MacBook Pro DE** keymap as a ready-made
 starting point: the stock keymaps target US ANSI keyboards, and many of their shortcuts are
 physically unpressable on a German (T1) layout — this keymap replaces them with reachable bindings.
 

@@ -9,10 +9,15 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DefaultActionGroup;
+import com.intellij.openapi.actionSystem.KeyboardGestureAction;
+import com.intellij.openapi.actionSystem.KeyboardModifierGestureShortcut;
 import com.intellij.openapi.actionSystem.KeyboardShortcut;
 import com.intellij.openapi.actionSystem.Separator;
 import com.intellij.openapi.actionSystem.Shortcut;
 import com.intellij.openapi.actionSystem.ToggleAction;
+import com.intellij.openapi.fileChooser.FileChooser;
+import com.intellij.openapi.fileChooser.FileChooserDescriptor;
+import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
 import com.intellij.openapi.fileChooser.FileSaverDialog;
@@ -29,6 +34,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -40,6 +46,7 @@ import com.intellij.ui.JBColor;
 import com.intellij.ui.KeyStrokeAdapter;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.JBLabel;
@@ -51,6 +58,7 @@ import com.intellij.util.ui.FormBuilder;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jdom.Element;
+import org.jdom.JDOMException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -305,10 +313,11 @@ public final class ConflictReportDialog extends DialogWrapper {
     return selector;
   }
 
-  /** A real IDEA action menu: Export… and Duplicate always, Rename/Delete when editable. */
+  /** A real IDEA action menu: Export…/Import… and Duplicate always, Rename/Delete when editable. */
   private void showGearMenu(Component anchor) {
     DefaultActionGroup group = new DefaultActionGroup(
       menuAction("Export…", false, this::openExportDialog),
+      menuAction("Import…", false, this::openImportDialog),
       Separator.getInstance(),
       menuAction("Duplicate", false, this::duplicateKeymap),
       menuAction("Rename…", true, this::startRename),
@@ -1080,6 +1089,255 @@ public final class ConflictReportDialog extends DialogWrapper {
       }
       return result;
     }
+  }
+
+  // ---- import ---------------------------------------------------------------------------------
+
+  /** One action's imported bindings; an empty list is a clearing override (an empty {@code <action/>}). */
+  private record ImportEntry(String actionId, List<Shortcut> shortcuts) {}
+
+  /** The result of parsing a keymap file: its declared name and parent (if any), the action
+   *  declarations to replay, a shortcut tally, and any non-fatal notes to show the user. */
+  private record ParsedImport(String name, @Nullable String parentName,
+                              List<ImportEntry> entries, int shortcutCount, List<String> warnings) {}
+
+  /** Gear-menu entry point: pick a keymap XML, validate it, resolve its name and parent, then preview
+   *  the result. The imported keymap is editable, so the gear menu's Delete… removes it again. */
+  private void openImportDialog() {
+    FileChooserDescriptor descriptor = FileChooserDescriptorFactory.createSingleFileDescriptor("xml")
+      .withTitle("Import Keymap");
+    VirtualFile file = FileChooser.chooseFile(descriptor, project, null);
+    if (file == null) return;
+
+    ParsedImport parsed = parseImport(file);
+    if (parsed == null) return;  // parseImport already reported why
+
+    ImportDialog dialog = new ImportDialog(parsed);
+    if (!dialog.showAndGet()) return;
+    performImport(dialog.chosenName(), dialog.chosenParent(), parsed.entries());
+  }
+
+  /** Read and validate a keymap file. Returns {@code null} (after showing why) on a fatal problem —
+   *  unreadable file, malformed XML, a root that isn't {@code <keymap>}, or no actions at all.
+   *  Individual unreadable or unsupported shortcut elements are collected as warnings, not fatal. */
+  private @Nullable ParsedImport parseImport(VirtualFile file) {
+    String text;
+    try {
+      text = new String(file.contentsToByteArray(), StandardCharsets.UTF_8);
+    }
+    catch (IOException ex) {
+      Messages.showErrorDialog(project, "Could not read the file:\n" + ex.getMessage(), "Import Failed");
+      return null;
+    }
+    Element root;
+    try {
+      root = JDOMUtil.load(text);
+    }
+    catch (IOException | JDOMException ex) {
+      Messages.showErrorDialog(project,
+        "This file is not well-formed XML, so it can't be a keymap:\n" + ex.getMessage(), "Import Failed");
+      return null;
+    }
+    if (!"keymap".equals(root.getName())) {
+      Messages.showErrorDialog(project,
+        "This is not a keymap file — its root element is <" + root.getName() + ">, not <keymap>.", "Import Failed");
+      return null;
+    }
+    String name = root.getAttributeValue("name");
+    if (name == null || name.isBlank()) name = file.getNameWithoutExtension();
+    String parentName = root.getAttributeValue("parent");
+
+    List<ImportEntry> entries = new ArrayList<>();
+    List<String> warnings = new ArrayList<>();
+    int shortcutCount = 0;
+    for (Element action : root.getChildren("action")) {
+      String id = action.getAttributeValue("id");
+      if (id == null || id.isBlank()) { warnings.add("An <action> without an id was skipped."); continue; }
+      List<Shortcut> shortcuts = new ArrayList<>();
+      for (Element sc : action.getChildren()) {
+        Shortcut shortcut = parseShortcut(sc, id, warnings);
+        if (shortcut != null) shortcuts.add(shortcut);
+      }
+      shortcutCount += shortcuts.size();
+      entries.add(new ImportEntry(id, shortcuts));  // an empty list clears the action (an empty <action/>)
+    }
+    if (entries.isEmpty()) {
+      Messages.showErrorDialog(project,
+        "This keymap file declares no actions, so there is nothing to import.", "Import Failed");
+      return null;
+    }
+    return new ParsedImport(name.trim(), parentName, entries, shortcutCount, warnings);
+  }
+
+  /** Parse one shortcut element the way the platform's own keymap reader does (same public APIs).
+   *  Unknown or unreadable elements are noted in {@code warnings} and dropped rather than aborting. */
+  private static @Nullable Shortcut parseShortcut(Element sc, String actionId, List<String> warnings) {
+    try {
+      switch (sc.getName()) {
+        case "keyboard-shortcut" -> {
+          KeyStroke first = KeyStrokeAdapter.getKeyStroke(sc.getAttributeValue("first-keystroke"));
+          if (first == null) { warnings.add("Unreadable keyboard shortcut on “" + actionId + "” was skipped."); return null; }
+          String secondStr = sc.getAttributeValue("second-keystroke");
+          KeyStroke second = secondStr == null ? null : KeyStrokeAdapter.getKeyStroke(secondStr);
+          return new KeyboardShortcut(first, second);
+        }
+        case "mouse-shortcut" -> {
+          return KeymapUtil.parseMouseShortcut(sc.getAttributeValue("keystroke"));
+        }
+        case "keyboard-gesture-shortcut" -> {
+          KeyStroke stroke = KeyStrokeAdapter.getKeyStroke(sc.getAttributeValue("keystroke"));
+          KeyboardGestureAction.ModifierType modifier = gestureModifier(sc.getAttributeValue("modifier"));
+          if (stroke == null || modifier == null) { warnings.add("Unreadable gesture shortcut on “" + actionId + "” was skipped."); return null; }
+          return KeyboardModifierGestureShortcut.newInstance(modifier, stroke);
+        }
+        default -> {
+          warnings.add("Unsupported <" + sc.getName() + "> element under “" + actionId + "” was skipped.");
+          return null;
+        }
+      }
+    }
+    catch (RuntimeException ex) {  // a malformed keystroke/modifier string — skip just this shortcut
+      warnings.add("A shortcut on “" + actionId + "” could not be read and was skipped.");
+      return null;
+    }
+  }
+
+  /** Match a gesture {@code modifier} attribute ("dblClick"/"hold") to its enum value. */
+  private static @Nullable KeyboardGestureAction.ModifierType gestureModifier(@Nullable String value) {
+    if (value == null) return null;
+    for (KeyboardGestureAction.ModifierType m : KeyboardGestureAction.ModifierType.values()) {
+      if (m.toString().equals(value) || m.name().equals(value)) return m;
+    }
+    return null;
+  }
+
+  /** Build the imported keymap as a child of the chosen parent, replaying its action declarations
+   *  (each replaces the parent's binding for that action; an empty declaration clears it), register
+   *  it, and preview it in the report. Not activated — like Duplicate, the active keymap is untouched. */
+  private void performImport(String name, Keymap parent, List<ImportEntry> entries) {
+    Keymap child = parent.deriveKeymap(name);
+    for (ImportEntry e : entries) {
+      // getShortcuts returns a copy, so removing while iterating is safe (same pattern as removeShortcutFrom).
+      for (Shortcut existing : child.getShortcuts(e.actionId())) child.removeShortcut(e.actionId(), existing);
+      for (Shortcut sc : e.shortcuts()) child.addShortcut(e.actionId(), sc);
+    }
+    KeymapManagerEx.getInstanceEx().getSchemeManager().addScheme(child);
+    keymap = child;   // select and preview the import; use Activate to switch to it
+    reloadKeymaps();
+    refresh();
+    updateActionButtons();
+  }
+
+  /** True if {@code name} is a usable keymap name here — non-blank, not reserved, not already taken. */
+  private boolean isKeymapNameAvailable(String name) {
+    if (name.isBlank() || isReservedKeymapName(name)) return false;
+    return findKeymapByName(name) == null;
+  }
+
+  /** Resolve a keymap by name via {@link KeymapManager#getKeymap}, which sees every keymap — including
+   *  internal roots like {@code $default} that {@link KeymapManagerEx#getAllKeymaps} hides. */
+  private @Nullable Keymap findKeymapByName(@Nullable String name) {
+    if (name == null || name.isBlank()) return null;
+    return KeymapManagerEx.getInstanceEx().getKeymap(name);
+  }
+
+  /** Resolves the imported keymap's name and parent before it is created — prefilled from the file,
+   *  editable when the name collides or the declared parent isn't installed. */
+  private final class ImportDialog extends DialogWrapper {
+    private static final String SELECT_PARENT = "— Select a parent —";
+    private final ParsedImport parsed;
+    private final JBTextField nameField = new JBTextField();
+    private final ComboBox<Keymap> parentCombo = new ComboBox<>();
+
+    ImportDialog(ParsedImport parsed) {
+      super(project);
+      this.parsed = parsed;
+      setTitle("Import Keymap");
+      init();
+    }
+
+    @Override
+    protected JComponent createCenterPanel() {
+      nameField.setText(suggestName(parsed.name()));
+      nameField.setColumns(28);
+
+      // Resolve the file's declared parent. If it exists it is preselected; if it isn't installed (or
+      // none is declared) the combo opens on a "— Select a parent —" placeholder and doValidate() asks
+      // for one in the status line, blocking OK until the user picks.
+      Keymap resolved = findKeymapByName(parsed.parentName());
+
+      List<Keymap> installed = new ArrayList<>(List.of(KeymapManagerEx.getInstanceEx().getAllKeymaps()));
+      // A resolved parent may be an internal root ($default) that getAllKeymaps() hides — make it pickable.
+      if (resolved != null && installed.stream().noneMatch(k -> k.getName().equals(resolved.getName()))) {
+        installed.add(resolved);
+      }
+      installed.sort(Comparator.comparing(Keymap::getPresentableName, String.CASE_INSENSITIVE_ORDER));
+
+      List<Keymap> items = new ArrayList<>();
+      items.add(null);  // the placeholder — selected (and required to be replaced) when parent is unresolved
+      items.addAll(installed);
+      parentCombo.setModel(new DefaultComboBoxModel<>(items.toArray(new Keymap[0])));
+      parentCombo.setRenderer(SimpleListCellRenderer.create(SELECT_PARENT,
+        k -> k == null ? SELECT_PARENT : k.getPresentableName() + " " + sourceTag(k)));
+      parentCombo.setSelectedItem(resolved);  // null → the placeholder
+
+      FormBuilder form = FormBuilder.createFormBuilder()
+        .addLabeledComponent("Name:", nameField)
+        .addLabeledComponent("Parent:", parentCombo)
+        .addComponent(new JBLabel(parsed.entries().size() + " action(s), "
+          + parsed.shortcutCount() + " shortcut(s)", UIUtil.ComponentStyle.SMALL));
+
+      if (!parsed.warnings().isEmpty()) form.addComponent(warningBlock(parsed.warnings()));
+
+      JPanel panel = form.getPanel();
+      panel.setBorder(JBUI.Borders.empty(10, 12));
+      return panel;
+    }
+
+    private String suggestName(String base) {
+      if (isKeymapNameAvailable(base)) return base;
+      for (int n = 2; ; n++) {
+        String candidate = base + " (" + n + ")";
+        if (isKeymapNameAvailable(candidate)) return candidate;
+      }
+    }
+
+    @Override
+    protected @Nullable ValidationInfo doValidate() {
+      String n = chosenName();
+      if (n.isEmpty()) return new ValidationInfo("Enter a name for the keymap.", nameField);
+      if (isReservedKeymapName(n)) {
+        return new ValidationInfo("“" + n + "” is a reserved keymap name — choose a different one.", nameField);
+      }
+      if (findKeymapByName(n) != null) {
+        return new ValidationInfo("A keymap named “" + n + "” already exists.", nameField);
+      }
+      if (chosenParent() == null) return new ValidationInfo(parentPrompt(), parentCombo);
+      return null;
+    }
+
+    /** The status-line message when no parent is selected — naming the file's missing parent if it had one. */
+    private String parentPrompt() {
+      return parsed.parentName() != null && !parsed.parentName().isBlank()
+        ? "The file's parent “" + parsed.parentName() + "” isn't installed — select a parent."
+        : "This file declares no parent — select one.";
+    }
+
+    String chosenName() { return nameField.getText().trim(); }
+    Keymap chosenParent() { return (Keymap) parentCombo.getSelectedItem(); }
+  }
+
+  /** The parse warnings as a compact, scrollable, read-only block (capped so a bad file can't grow
+   *  the dialog without bound). */
+  private static JComponent warningBlock(List<String> warnings) {
+    StringBuilder sb = new StringBuilder("<html><b>Notes</b><ul style='margin:2px 0 0 16px;padding:0'>");
+    int shown = Math.min(warnings.size(), 12);
+    for (int i = 0; i < shown; i++) sb.append("<li>").append(escape(warnings.get(i))).append("</li>");
+    if (warnings.size() > shown) sb.append("<li>… and ").append(warnings.size() - shown).append(" more</li>");
+    sb.append("</ul></html>");
+    JBLabel label = new JBLabel(sb.toString(), UIUtil.ComponentStyle.SMALL);
+    label.setForeground(UIUtil.getContextHelpForeground());
+    return label;
   }
 
   // ---- detail pane ----------------------------------------------------------------------------

@@ -8,8 +8,9 @@
     shortcuts that clash with macOS system shortcuts, and duplicate bindings
     within a keymap. A live, grouped report explains each overlap (whether your
     IDE still wins the key or macOS takes it first) and lets you rebind or
-    remove the shortcut in place, or export a keymap to XML. Open it any time
-    from <b>Tools &rarr; Manage Keymap Conflicts…</b> or Find Action.
+    remove the shortcut in place, or export and import keymaps as XML to share
+    them. Open it any time from
+    <b>Tools &rarr; Manage Keymap Conflicts…</b> or Find Action.
     <br/><br/>
     It also bundles the <b>MacBook Pro DE</b> keymap as a ready-made starting
     point: a macOS keymap tuned for MacBook Pro keyboards with the German (T1)
@@ -28,6 +29,9 @@
     <ul>
       <li>Conflict report with per-conflict advice, in-place rebind/remove, and
           XML export.</li>
+      <li><b>Import a keymap from XML</b> (gear menu → Import…): validates the
+          file, resolves a name clash, and lets you pick a parent when the file's
+          declared parent isn't installed. Imported keymaps can be deleted again.</li>
       <li>Bundled <b>MacBook Pro DE</b> keymap for the German (T1) MacBook Pro
           layout.</li>
       <li>Report wording adapts to the host IDE (IntelliJ IDEA, PyCharm, GoLand,

@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "de.civa"
-version = "1.5.0"
+version = "1.6.0"
 
 tasks.withType<JavaCompile> {
     // platform 261+ runs on JBR 21; class files built with the local JDK 17 load fine there
