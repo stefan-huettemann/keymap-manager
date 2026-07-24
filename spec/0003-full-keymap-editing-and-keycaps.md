@@ -46,7 +46,14 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
 **Cosmetics**
 - Shortcuts render as **keycaps** — each modifier/key in its own rounded frame,
   matching Settings → Keymap (per user screenshot). Applied everywhere a shortcut
-  shows: navigator tree cells, detail pane, dialogs.
+  shows: navigator tree cells, detail pane, dialogs. The frame always uses the
+  "highlight" style (drawn in the glyph colour) — there is no dimmer variant.
+- Gear toggles **Show Action IDs** and **Show Keymap** append the action id
+  and/or the keymap that defines the binding (nearest declaring ancestor),
+  comma-separated, next to the name — in the navigator, detail pane **and** the
+  confirm-dialog lists.
+- The **Remove** confirm dialog shows every shortcut assigned to each action (not
+  just one) and, from a per-row/category link, clears them all.
 - Renames: **"Revert to default…" → "Revert…"**, **"Open Keymap settings" →
   "Settings…"**. Every **"Settings…"** carries a trailing *external-link* icon
   (`AllIcons.Ide.External_link_arrow`) signalling "leaves the plugin".
@@ -66,9 +73,13 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
   explanation above the action rows).
 - Secondary info (counts, source tags, keycaps) is **right-aligned** with a right
   margin, via a custom full-width tree renderer.
-- Clicking a category Title shows its info in the details pane, and — below it —
-  **only a "Settings…" link** (the earlier idea of category-level bulk
-  Remove/Revert was **dropped**: too broad, and Revert-on-inherited is inert).
+- Clicking a category Title shows its info in the details pane, its links, **and
+  the category's contents listed in the pane** (each row selects that item — a
+  comfort so the tree needn't be expanded). Category links (revised 2026-07-24
+  after an initial "Settings-only" pass): **Inherited Shortcuts** gets only
+  **Settings…**; every other category also gets bulk **Remove…** (clears all
+  shortcuts of all its actions) and **Revert…**, deselectable in the confirm
+  dialog. Inherited stays Settings-only because Revert-on-inherited is inert.
 
 **Dialogs (Rebind / Remove / Revert)**
 - **Rebind** unchanged (already has a "Current:" row).

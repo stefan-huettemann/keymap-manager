@@ -3,7 +3,6 @@ package de.civa.keymap;
 import com.intellij.openapi.actionSystem.KeyboardShortcut;
 import com.intellij.openapi.actionSystem.Shortcut;
 import com.intellij.openapi.keymap.KeymapUtil;
-import com.intellij.ui.JBColor;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import org.jetbrains.annotations.Nullable;
@@ -19,6 +18,9 @@ import java.util.List;
  * frame, matching Settings → Keymap (spec 0003). Public-API only: the glyphs come from
  * {@link KeymapUtil#getKeystrokeText}, then are split into per-cap tokens, so the exact platform
  * text (incl. umlaut and arrow glyphs) is preserved and the verifier stays clean.
+ *
+ * <p>The frame always uses the "highlight" style — drawn in the same colour as the glyph it wraps,
+ * so a keycap reads as a crisp outlined key on any background (there is no dimmer "normal" variant).</p>
  */
 final class Keycaps {
 
@@ -44,52 +46,52 @@ final class Keycaps {
 
   // ---- components -----------------------------------------------------------------------------
 
-  /** A transparent, left-to-right row of keycaps for a list of shortcuts (default colours). */
+  /** A transparent, left-to-right row of keycaps for a list of shortcuts (default label colour). */
   static JComponent forShortcuts(List<Shortcut> shortcuts) {
-    return forShortcuts(shortcuts, null, null);
+    return forShortcuts(shortcuts, null);
   }
 
   /**
    * A transparent row of keycaps for a list of shortcuts. Several shortcuts are separated by a faint
-   * "/". {@code fg}/{@code border} override the glyph and frame colours (used by the tree renderer so
-   * caps stay legible on the selection background); pass {@code null} for the default label colours.
+   * "/". {@code fg} overrides the glyph <em>and</em> frame colour (used by the tree renderer so caps
+   * stay legible on the selection background); pass {@code null} for the default label colour.
    */
-  static JComponent forShortcuts(List<Shortcut> shortcuts, @Nullable Color fg, @Nullable Color border) {
+  static JComponent forShortcuts(List<Shortcut> shortcuts, @Nullable Color fg) {
     JPanel row = row();
     boolean first = true;
     for (Shortcut sc : shortcuts) {
       if (!first) row.add(separator(fg));
       first = false;
-      addShortcut(row, sc, fg, border);
+      addShortcut(row, sc, fg);
     }
     return row;
   }
 
-  /** A transparent row of keycaps for a single shortcut (default colours). */
+  /** A transparent row of keycaps for a single shortcut (default label colour). */
   static JComponent forShortcut(Shortcut sc) {
     JPanel row = row();
-    addShortcut(row, sc, null, null);
+    addShortcut(row, sc, null);
     return row;
   }
 
   /** A transparent row of keycaps for a bare keystroke (e.g. a conflict's key). */
-  static JComponent forKeystroke(KeyStroke ks, @Nullable Color fg, @Nullable Color border) {
+  static JComponent forKeystroke(KeyStroke ks, @Nullable Color fg) {
     JPanel row = row();
-    for (String t : tokens(ks)) row.add(cap(t, fg, border));
+    for (String t : tokens(ks)) row.add(cap(t, fg));
     return row;
   }
 
   /** Append the caps for one shortcut into {@code row}; a two-stroke chord renders as two cap groups. */
-  private static void addShortcut(JPanel row, Shortcut sc, @Nullable Color fg, @Nullable Color border) {
+  private static void addShortcut(JPanel row, Shortcut sc, @Nullable Color fg) {
     if (sc instanceof KeyboardShortcut ks) {
-      for (String t : tokens(ks.getFirstKeyStroke())) row.add(cap(t, fg, border));
+      for (String t : tokens(ks.getFirstKeyStroke())) row.add(cap(t, fg));
       if (ks.getSecondKeyStroke() != null) {
         row.add(chordGap());
-        for (String t : tokens(ks.getSecondKeyStroke())) row.add(cap(t, fg, border));
+        for (String t : tokens(ks.getSecondKeyStroke())) row.add(cap(t, fg));
       }
     }
     else {
-      row.add(cap(KeymapUtil.getShortcutText(sc), fg, border));   // mouse / gesture: one plain cap
+      row.add(cap(KeymapUtil.getShortcutText(sc), fg));   // mouse / gesture: one plain cap
     }
   }
 
@@ -102,11 +104,12 @@ final class Keycaps {
     return p;
   }
 
-  private static JLabel cap(String glyph, @Nullable Color fg, @Nullable Color border) {
+  private static JLabel cap(String glyph, @Nullable Color fg) {
+    Color color = fg != null ? fg : UIUtil.getLabelForeground();
     JLabel label = new JLabel(glyph, SwingConstants.CENTER);
     label.setFont(JBUI.Fonts.smallFont());
-    label.setForeground(fg != null ? fg : UIUtil.getLabelForeground());
-    label.setBorder(new KeycapBorder(border));
+    label.setForeground(color);
+    label.setBorder(new KeycapBorder(color));   // frame == glyph colour: the always-"highlight" look
     return label;
   }
 
@@ -122,12 +125,12 @@ final class Keycaps {
     return s;
   }
 
-  /** Rounded 1px frame with inner padding — the "key" look. */
+  /** Rounded 1px frame with inner padding — the "key" look, drawn in the glyph colour. */
   private static final class KeycapBorder extends AbstractBorder {
-    private final @Nullable Color override;
+    private final Color color;
 
-    KeycapBorder(@Nullable Color override) {
-      this.override = override;
+    KeycapBorder(Color color) {
+      this.color = color;
     }
 
     @Override
@@ -135,7 +138,7 @@ final class Keycaps {
       Graphics2D g2 = (Graphics2D) g.create();
       try {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2.setColor(override != null ? override : JBColor.border());
+        g2.setColor(color);
         int arc = JBUI.scale(6);
         g2.drawRoundRect(x, y, width - JBUI.scale(1), height - JBUI.scale(1), arc, arc);
       }

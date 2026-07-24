@@ -119,6 +119,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -167,7 +168,9 @@ public final class ConflictReportDialog extends DialogWrapper {
   private JBScrollPane detailScroll;  // scroll host, also the width source for wrapped text
   private Object currentPayload;      // the tree row the detail currently shows (for re-render)
   private boolean showActionIds;      // gear toggle: show the internal action id next to each name
+  private boolean showKeymap;         // gear toggle: show the keymap that defines each binding
   private boolean showModifiedOnly;   // gear toggle: show only the "Modified shortcuts" section
+  private final Map<Keymap, Set<String>> ownIdsCache = new HashMap<>();  // per-keymap own declarations (for showKeymap)
   private JBLabel summaryText;
   private JBLabel summaryIcon;
   private ComboBox<Keymap> keymapCombo;
@@ -364,6 +367,15 @@ public final class ConflictReportDialog extends DialogWrapper {
         showActionIds = state;
         tree.repaint();  // Modified rows show/hide the id
         if (currentPayload != null) showDetail(currentPayload);  // re-render detail pane with/without ids
+      }
+      @Override public ActionUpdateThread getActionUpdateThread() { return ActionUpdateThread.EDT; }
+    });
+    group.add(new ToggleAction("Show Keymap") {
+      @Override public boolean isSelected(@NotNull AnActionEvent e) { return showKeymap; }
+      @Override public void setSelected(@NotNull AnActionEvent e, boolean state) {
+        showKeymap = state;   // appends the defining keymap to the id string (comma-separated)
+        tree.repaint();
+        if (currentPayload != null) showDetail(currentPayload);
       }
       @Override public ActionUpdateThread getActionUpdateThread() { return ActionUpdateThread.EDT; }
     });
@@ -717,6 +729,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   private void refresh() {
+    ownIdsCache.clear();   // an edit changes own declarations, so drop the Show-Keymap cache
     scan = ConflictScan.of(keymap);
     rebuildTree();
     updateSummary();
@@ -785,6 +798,18 @@ public final class ConflictReportDialog extends DialogWrapper {
           target.removeShortcut(id, ks);
         }
       }
+    }
+    refresh();
+    updateActionButtons();
+  }
+
+  /** Clear <b>every</b> shortcut of the given actions (used by the per-row and category "Remove…", which
+   *  aren't scoped to one keystroke), copying a read-only keymap first. */
+  private void removeAllShortcuts(List<String> ids) {
+    Keymap target = ensureEditable();
+    if (target == null) return;
+    for (String id : ids) {
+      for (Shortcut sc : target.getShortcuts(id)) target.removeShortcut(id, sc);
     }
     refresh();
     updateActionButtons();
@@ -1475,22 +1500,141 @@ public final class ConflictReportDialog extends DialogWrapper {
     SwingUtilities.invokeLater(() -> detailScroll.getVerticalScrollBar().setValue(0));
   }
 
-  /** A category's detail: its heading and full blurb, then a lone "Settings…" link. The earlier idea
-   *  of category-level bulk Remove/Revert was dropped (spec 0003): too broad, and revert-on-inherited
-   *  is a no-op — per-row editing is where changes happen. */
+  /** A category's detail: heading + full blurb, the category-level links, then the category's contents
+   *  listed in the pane (comfort — see everything without expanding the tree; a row's name selects it).
+   *  Links: <b>Inherited Shortcuts</b> gets only <b>Settings…</b>; every other category also gets bulk
+   *  <b>Remove…</b> / <b>Revert…</b> over all its actions (deselectable in the confirm dialog). */
   private void buildSectionDetail(String title) {
     addHtml("<h3 style='margin:0 0 4px 0'>" + escape(title) + "</h3>"
       + grayBlock(escape(sectionBlurb(title))));
     JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
     row.setOpaque(false);
+    if (!title.equals(SEC_INHERITED)) {
+      List<String> ids = categoryIds(title);
+      if (!ids.isEmpty()) {
+        row.add(new ActionLink("Remove…", (ActionListener) e -> confirmRemove(null, ids)));
+        row.add(dot());
+        row.add(new ActionLink("Revert…", (ActionListener) e -> confirmRevert(ids)));
+        row.add(dot());
+      }
+    }
     row.add(settingsLink());
     addBlock(row);
+
+    JComponent listing = sectionListing(title);
+    if (listing != null) {
+      addBlock(boldLabel("Contents"));
+      addBlock(listing);
+    }
+  }
+
+  /** All action ids in a category (used by its bulk Remove/Revert links). */
+  private List<String> categoryIds(String title) {
+    LinkedHashSet<String> ids = new LinkedHashSet<>();
+    if (title.equals(SEC_KEYMAP) || title.equals(SEC_IDEA_IGNORED)) {
+      boolean ignored = title.equals(SEC_IDEA_IGNORED);
+      for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
+        if (ideaIgnored(c) == ignored) for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
+      }
+    }
+    else if (title.equals(SEC_DOUBLE)) {
+      for (ConflictScan.InternalConflict c : scan.internal) for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
+    }
+    else if (title.equals(SEC_MODIFIED)) {
+      for (ConflictScan.ModifiedBinding m : scan.modified) ids.add(m.action().id());
+    }
+    else if (title.equals(SEC_INHERITED)) {
+      for (ConflictScan.ModifiedBinding m : scan.inherited) ids.add(m.action().id());
+    }
+    return new ArrayList<>(ids);
+  }
+
+  /** The category's items rendered as a scrollable list in the details pane; each row's name is a link
+   *  that selects that item in the navigator. Null when the category is empty. */
+  private @Nullable JComponent sectionListing(String title) {
+    JPanel list = new JPanel();
+    list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
+    list.setOpaque(false);
+    list.setAlignmentX(Component.LEFT_ALIGNMENT);
+    int count = 0;
+    if (title.equals(SEC_KEYMAP) || title.equals(SEC_IDEA_IGNORED)) {
+      boolean ignored = title.equals(SEC_IDEA_IGNORED);
+      for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
+        if (ideaIgnored(c) != ignored) continue;
+        Object payload = ignored ? new IdeaIgnoredItem(c) : new KeymapItem(c);
+        list.add(detailListRow(actionsLabel(c.actions()), Keycaps.forKeystroke(c.stroke(), null), payload));
+        count++;
+      }
+      if (ignored) {
+        for (ConflictAdvice.Supplement s : (scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.<ConflictAdvice.Supplement>of())) {
+          list.add(detailListRow(s.macSide(), null, s));
+          count++;
+        }
+      }
+    }
+    else if (title.equals(SEC_DOUBLE)) {
+      for (ConflictScan.InternalConflict c : scan.internal) {
+        list.add(detailListRow(actionsLabel(c.actions()), Keycaps.forShortcut(c.shortcut()), c));
+        count++;
+      }
+    }
+    else if (title.equals(SEC_MODIFIED)) {
+      for (ConflictScan.ModifiedBinding m : scan.modified) {
+        JComponent caps = m.shortcuts().isEmpty() ? null : Keycaps.forShortcuts(m.shortcuts(), null);
+        list.add(detailListRow(m.action().label(), caps, new ModifiedItem(m)));
+        count++;
+      }
+    }
+    else if (title.equals(SEC_INHERITED)) {
+      for (ConflictScan.ModifiedBinding m : scan.inherited) {
+        list.add(detailListRow(m.action().label(), Keycaps.forShortcuts(m.shortcuts(), null), new InheritedItem(m)));
+        count++;
+      }
+    }
+    return count == 0 ? null : cappedScroll(list);
+  }
+
+  /** One row of a section's contents listing: the name as a link that selects the item in the navigator,
+   *  followed by its shortcut keycaps. */
+  private JComponent detailListRow(String label, @Nullable JComponent caps, Object payload) {
+    JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(1)));
+    p.setOpaque(false);
+    p.setAlignmentX(Component.LEFT_ALIGNMENT);
+    p.add(new ActionLink(label, (ActionListener) e -> selectPayloadInTree(payload)));
+    if (caps != null) p.add(caps);
+    return p;
+  }
+
+  /** Select the tree node carrying {@code payload} (records compare by value), expanding its section and
+   *  scrolling it into view; the selection listener then renders its detail. */
+  private void selectPayloadInTree(Object payload) {
+    DefaultMutableTreeNode node = findNode((DefaultMutableTreeNode) tree.getModel().getRoot(), payload);
+    if (node == null) return;
+    TreePath path = new TreePath(node.getPath());
+    if (path.getParentPath() != null) tree.expandPath(path.getParentPath());
+    tree.setSelectionPath(path);
+    tree.scrollPathToVisible(path);
+  }
+
+  private static @Nullable DefaultMutableTreeNode findNode(DefaultMutableTreeNode node, Object payload) {
+    if (payload.equals(node.getUserObject())) return node;
+    for (int i = 0; i < node.getChildCount(); i++) {
+      DefaultMutableTreeNode found = findNode((DefaultMutableTreeNode) node.getChildAt(i), payload);
+      if (found != null) return found;
+    }
+    return null;
+  }
+
+  /** The label for a set of actions: the first action's name plus a "+N" count when there are more. */
+  private static String actionsLabel(List<ConflictScan.ActionRef> a) {
+    if (a.isEmpty()) return "";
+    return a.get(0).label() + (a.size() > 1 ? "  +" + (a.size() - 1) : "");
   }
 
   /** A conflict on one keystroke: facts and status on top, the interactive action list and its fix
    *  links in the middle, the advice below. */
   private void buildConflictDetail(ConflictScan.ExternalConflict c, @Nullable String extraNoteHtml) {
-    addBlock(shortcutHeaderRow(Keycaps.forKeystroke(c.stroke(), null, null), null));
+    addBlock(shortcutHeaderRow(Keycaps.forKeystroke(c.stroke(), null), null));
     addHtml(statusBadge(c) + factRow("macOS", escape(macList(c))));
     addBlock(boldLabel("Actions"));
     ActionListView list = new ActionListView(c.stroke(), c.actions());
@@ -1523,7 +1667,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     String body = cleared
       ? "This keymap removes a shortcut it would otherwise inherit from the parent keymap."
       : "This keymap declares this shortcut itself, so it differs from the parent keymap it inherits from.";
-    addBlock(shortcutHeaderRow(cleared ? null : Keycaps.forShortcuts(m.shortcuts(), null, null), header));
+    addBlock(shortcutHeaderRow(cleared ? null : Keycaps.forShortcuts(m.shortcuts(), null), header));
     addHtml(factRow("Action", escape(actionLabelWithId(a)))
       + (a.source() != null ? factRow("Source", escape(a.source())) : "")
       + callout("What this is", escape(body)));
@@ -1534,7 +1678,7 @@ public final class ConflictReportDialog extends DialogWrapper {
    *  (Rebind/Remove derive a copy). No Revert link — an inherited binding already equals the parent. */
   private void buildInheritedDetail(ConflictScan.ModifiedBinding m) {
     ConflictScan.ActionRef a = m.action();
-    addBlock(shortcutHeaderRow(Keycaps.forShortcuts(m.shortcuts(), null, null), null));
+    addBlock(shortcutHeaderRow(Keycaps.forShortcuts(m.shortcuts(), null), null));
     addHtml(factRow("Action", escape(actionLabelWithId(a)))
       + (a.source() != null ? factRow("Source", escape(a.source())) : "")
       + callout("What this is", escape("This keymap inherits this shortcut from a parent keymap. Rebind "
@@ -1543,8 +1687,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   /** The per-row edit links for one action's binding: Rebind… · Remove… · [Revert…] · Settings….
-   *  Rebind/Remove act on the action's primary keystroke (omitted when it has only a mouse/gesture
-   *  binding); Revert is offered only for the keymap's own declarations. */
+   *  Rebind moves the action's primary keystroke (omitted when it has only a mouse/gesture binding);
+   *  Remove clears <b>all</b> its shortcuts; Revert is offered only for the keymap's own declarations. */
   private JComponent actionEditLinks(ConflictScan.ActionRef a, List<Shortcut> shortcuts, boolean allowRevert) {
     JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
     row.setOpaque(false);
@@ -1552,7 +1696,9 @@ public final class ConflictReportDialog extends DialogWrapper {
     if (stroke != null) {
       row.add(new ActionLink("Rebind…", (ActionListener) e -> rebindActions(stroke, List.of(a.id()))));
       row.add(dot());
-      row.add(new ActionLink("Remove…", (ActionListener) e -> confirmRemove(stroke, List.of(a.id()))));
+    }
+    if (!shortcuts.isEmpty()) {
+      row.add(new ActionLink("Remove…", (ActionListener) e -> confirmRemove(null, List.of(a.id()))));
       row.add(dot());
     }
     if (allowRevert) {
@@ -1579,9 +1725,46 @@ public final class ConflictReportDialog extends DialogWrapper {
     return link;
   }
 
-  /** Action name, plus its id in parentheses when the "Show Action IDs" toggle is on. */
+  /** Action name, plus the "Show Action IDs" / "Show Keymap" meta in parentheses when either is on. */
   private String actionLabelWithId(ConflictScan.ActionRef a) {
-    return showActionIds ? a.label() + "  (" + a.id() + ")" : a.label();
+    String meta = actionMeta(a.id());
+    return meta != null ? a.label() + "  (" + meta + ")" : a.label();
+  }
+
+  /** The comma-separated meta shown next to an action name per the gear toggles: the action id (Show
+   *  Action IDs) and/or the keymap that defines its current binding (Show Keymap). Null when both off. */
+  private @Nullable String actionMeta(String id) {
+    List<String> parts = new ArrayList<>(2);
+    if (showActionIds) parts.add(id);
+    if (showKeymap) {
+      String km = definingKeymapName(id);
+      if (km != null) parts.add(km);
+    }
+    return parts.isEmpty() ? null : String.join(", ", parts);
+  }
+
+  /** The keymap that actually declares this action's current binding: the nearest keymap up the parent
+   *  chain (from the selected one) whose own declarations include the id. Null if none declares it. */
+  private @Nullable String definingKeymapName(String id) {
+    for (Keymap k = keymap; k != null; k = k.getParent()) {
+      if (ownIds(k).contains(id)) return k.getPresentableName();
+    }
+    return null;
+  }
+
+  /** A keymap's own declared action ids (from {@link KeymapImpl#writeScheme}), cached; the cache is
+   *  cleared on {@link #refresh()} since an edit changes the selected keymap's declarations. */
+  private Set<String> ownIds(Keymap k) {
+    return ownIdsCache.computeIfAbsent(k, kk -> {
+      Set<String> ids = new HashSet<>();
+      if (kk instanceof KeymapImpl impl) {
+        for (Object child : impl.writeScheme().getChildren("action")) {
+          String id = ((Element) child).getAttributeValue("id");
+          if (id != null && !id.isEmpty()) ids.add(id);
+        }
+      }
+      return ids;
+    });
   }
 
   /** Comma-joined rendering of a set of shortcuts (empty string when there are none). */
@@ -1659,21 +1842,28 @@ public final class ConflictReportDialog extends DialogWrapper {
     return d;
   }
 
-  /** Confirm removal; the dialog's checkbox list lets the user fine-tune which actions to clear. */
-  private void confirmRemove(KeyStroke stroke, List<String> ids) {
+  /** Confirm removal, then clear the chosen actions. {@code stroke != null} clears only that keystroke
+   *  (from a conflict); {@code stroke == null} clears <b>all</b> shortcuts of each action (per-row/category). */
+  private void confirmRemove(@Nullable KeyStroke stroke, List<String> ids) {
+    if (ids.isEmpty()) return;
     RemoveConfirmDialog dialog = new RemoveConfirmDialog(stroke, ids);
-    if (dialog.showAndGet()) removeShortcutFrom(stroke, dialog.selectedIds());
+    if (!dialog.showAndGet()) return;
+    List<String> picked = dialog.selectedIds();
+    if (stroke != null) removeShortcutFrom(stroke, picked);
+    else removeAllShortcuts(picked);
   }
 
-  /** Remove confirmation: the shortcut as a "Current:" keycap header, then the editable action list
-   *  (shown by default, scrollable; a "Hide actions" checkbox on the button row collapses it). */
+  /** Remove confirmation. When scoped to one keystroke (a conflict) it shows a "Current:" keycap header
+   *  and clears that key; otherwise it clears <b>all</b> shortcuts of each action. Either way the editable
+   *  action list — each row showing the action's full set of current shortcuts — is shown by default and
+   *  scrollable, with a "Hide actions" checkbox to collapse it. */
   private final class RemoveConfirmDialog extends DialogWrapper {
-    private final KeyStroke stroke;
+    private final @Nullable KeyStroke stroke;
     private final List<String> ids;
-    private ActionCheckboxList checkList;
+    private EditActionList list;
     private JComponent listScroll;
 
-    RemoveConfirmDialog(KeyStroke stroke, List<String> ids) {
+    RemoveConfirmDialog(@Nullable KeyStroke stroke, List<String> ids) {
       super(project);
       this.stroke = stroke;
       this.ids = ids;
@@ -1685,28 +1875,28 @@ public final class ConflictReportDialog extends DialogWrapper {
 
     @Override
     protected JComponent createCenterPanel() {
-      checkList = new ActionCheckboxList(ids);
-      listScroll = cappedScroll(checkList);
+      list = new EditActionList(ids, false);
+      listScroll = cappedScroll(list);
 
       JBLabel summary = new JBLabel();
       summary.setAlignmentX(Component.LEFT_ALIGNMENT);
-      checkList.setOnChange(() -> summary.setText(removeSummary()));
+      list.setOnChange(() -> summary.setText(removeSummary()));
       summary.setText(removeSummary());
 
-      JPanel form = FormBuilder.createFormBuilder()
-        .addLabeledComponent("Current:", Keycaps.forKeystroke(stroke, null, null))
-        .addComponent(summary)
-        .addComponent(listScroll)
-        .getPanel();
+      FormBuilder form = FormBuilder.createFormBuilder();
+      if (stroke != null) form.addLabeledComponent("Current:", Keycaps.forKeystroke(stroke, null));
+      form.addComponent(summary).addComponent(listScroll);
       JPanel wrap = new JPanel(new BorderLayout());  // NORTH keeps content pinned to the top-left
-      wrap.add(form, BorderLayout.NORTH);
+      wrap.add(form.getPanel(), BorderLayout.NORTH);
       return wrap;
     }
 
     private String removeSummary() {
+      int n = list.checkedIds().size();
       int total = ids.size();
-      return "Remove from " + checkList.checkedIds().size()
-        + " of " + total + " action" + (total == 1 ? "" : "s") + " on this key?";
+      return stroke != null
+        ? "Remove from " + n + " of " + total + " action" + (total == 1 ? "" : "s") + " on this key?"
+        : "Remove all shortcuts from " + n + " of " + total + " action" + (total == 1 ? "" : "s") + "?";
     }
 
     @Override
@@ -1720,7 +1910,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
 
     List<String> selectedIds() {
-      return checkList.checkedIds();
+      return list.checkedIds();
     }
   }
 
@@ -1798,8 +1988,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   private final class RevertConfirmDialog extends DialogWrapper {
     private final List<String> ids;
     private final boolean bulk;
-    private RevertList revertList;   // bulk only
-    private JComponent listScroll;   // bulk only
+    private EditActionList revertList;   // bulk only
+    private JComponent listScroll;       // bulk only
 
     RevertConfirmDialog(List<String> ids) {
       super(project);
@@ -1822,9 +2012,9 @@ public final class ConflictReportDialog extends DialogWrapper {
         List<Shortcut> current = List.of(keymap.getShortcuts(id));
         List<Shortcut> to = revertTarget(id);
         form.addLabeledComponent("Current:", current.isEmpty()
-          ? grayText("—") : Keycaps.forShortcuts(current, null, null));
+          ? grayText("—") : Keycaps.forShortcuts(current, null));
         form.addLabeledComponent("Reverts to:", to.isEmpty()
-          ? grayText("unbound") : Keycaps.forShortcuts(to, null, null));
+          ? grayText("unbound") : Keycaps.forShortcuts(to, null));
       }
       form.addComponent(summary);
       if (!keymap.canModify()) {   // reverting derives+activates an editable copy, like Rebind/Remove
@@ -1834,7 +2024,7 @@ public final class ConflictReportDialog extends DialogWrapper {
         form.addComponent(copyNote);
       }
       if (bulk) {
-        revertList = new RevertList(ids);
+        revertList = new EditActionList(ids, true);
         revertList.setOnChange(() -> summary.setText(revertSummary()));
         listScroll = cappedScroll(revertList);
         form.addComponent(listScroll);
@@ -1876,37 +2066,41 @@ public final class ConflictReportDialog extends DialogWrapper {
     return l;
   }
 
-  /** The bulk-revert pick list: one checkbox row per action showing {@code name  [current] → [reverts-to]},
-   *  all ticked initially. "reverts-to" is the parent binding ({@link #revertTarget}); "unbound" when the
-   *  parent binds nothing. */
-  private final class RevertList extends JPanel {
+  /** The editable pick list shared by the Rebind / Remove / Revert dialogs: one checkbox row per action,
+   *  all ticked initially, showing {@code name (id, keymap)  [all current shortcuts]} — and, when
+   *  {@code showTarget}, {@code → [reverts-to]} (the parent binding via {@link #revertTarget}; "unbound"
+   *  when the parent binds nothing). The {@code (id, keymap)} meta honours the gear toggles. */
+  private final class EditActionList extends JPanel {
     private final List<String> ids;
     private final List<JCheckBox> boxes = new ArrayList<>();
     private Runnable onChange;
 
-    RevertList(List<String> ids) {
-      this.ids = ids;
+    EditActionList(java.util.Collection<String> actionIds, boolean showTarget) {
+      this.ids = actionIds.stream().sorted().toList();
       setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
       setOpaque(false);
       setBorder(JBUI.Borders.empty(4, 6, 0, 0));
       setAlignmentX(Component.LEFT_ALIGNMENT);
-      for (String id : ids) add(row(id));
+      for (String id : ids) add(row(id, showTarget));
     }
 
-    private JComponent row(String id) {
+    private JComponent row(String id, boolean showTarget) {
       JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(1)));
       p.setOpaque(false);
       p.setAlignmentX(Component.LEFT_ALIGNMENT);
-      JCheckBox cb = new JCheckBox(actionName(id), true);
+      String meta = actionMeta(id);
+      JCheckBox cb = new JCheckBox(meta != null ? actionName(id) + "   (" + meta + ")" : actionName(id), true);
       cb.setOpaque(false);
       cb.addItemListener(e -> { if (onChange != null) onChange.run(); });
       boxes.add(cb);
       p.add(cb);
-      List<Shortcut> current = List.of(keymap.getShortcuts(id));
-      if (!current.isEmpty()) p.add(Keycaps.forShortcuts(current, null, null));
-      p.add(grayText("→"));
-      List<Shortcut> to = revertTarget(id);
-      p.add(to.isEmpty() ? grayText("unbound") : Keycaps.forShortcuts(to, null, null));
+      List<Shortcut> current = List.of(keymap.getShortcuts(id));   // all shortcuts, not just one (spec 0003)
+      if (!current.isEmpty()) p.add(Keycaps.forShortcuts(current, null));
+      if (showTarget) {
+        p.add(grayText("→"));
+        List<Shortcut> to = revertTarget(id);
+        p.add(to.isEmpty() ? grayText("unbound") : Keycaps.forShortcuts(to, null));
+      }
       return p;
     }
 
@@ -2074,37 +2268,6 @@ public final class ConflictReportDialog extends DialogWrapper {
     win.validate();
   }
 
-  /** An editable checkbox list of actions — all ticked initially; {@link #checkedIds()} gives the picks. */
-  private static final class ActionCheckboxList extends JPanel {
-    private final List<String> ids;
-    private final List<JCheckBox> boxes = new ArrayList<>();
-    private Runnable onChange;
-
-    ActionCheckboxList(java.util.Collection<String> actionIds) {
-      setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-      setOpaque(false);
-      setBorder(JBUI.Borders.empty(4, 6, 0, 0));
-      setAlignmentX(Component.LEFT_ALIGNMENT);
-      ids = actionIds.stream().sorted().toList();
-      for (String id : ids) {
-        JCheckBox cb = new JCheckBox(actionName(id), true);
-        cb.setOpaque(false);
-        cb.setAlignmentX(Component.LEFT_ALIGNMENT);
-        cb.addItemListener(e -> { if (onChange != null) onChange.run(); });
-        boxes.add(cb);
-        add(cb);
-      }
-    }
-
-    void setOnChange(Runnable r) { onChange = r; }
-
-    List<String> checkedIds() {
-      List<String> result = new ArrayList<>();
-      for (int i = 0; i < ids.size(); i++) if (boxes.get(i).isSelected()) result.add(ids.get(i));
-      return result;
-    }
-  }
-
   @Override
   protected com.intellij.openapi.ui.DialogWrapper.@Nullable DialogStyle getStyle() {
     return DialogStyle.COMPACT;
@@ -2250,16 +2413,15 @@ public final class ConflictReportDialog extends DialogWrapper {
 
       Color fg = UIUtil.getTreeForeground(sel, focused);
       Color gray = sel ? fg : UIUtil.getContextHelpForeground();
-      Color capBorder = sel ? fg : JBColor.border();
       left.setForeground(fg);
 
-      render(((DefaultMutableTreeNode) value).getUserObject(), fg, gray, capBorder);
+      render(((DefaultMutableTreeNode) value).getUserObject(), fg, gray);
 
       availWidth = availableWidth(tree, ((DefaultMutableTreeNode) value).getLevel());
       return this;
     }
 
-    private void render(Object p, Color fg, Color gray, Color capBorder) {
+    private void render(Object p, Color fg, Color gray) {
       if (p instanceof Section s) {
         primary(null, subIde(s.title()), fg, true);
         secondary("(" + s.count() + ")", gray);
@@ -2271,45 +2433,41 @@ public final class ConflictReportDialog extends DialogWrapper {
         primary(AllIcons.General.InspectionsOK, e.message(), gray, false);
       }
       else if (p instanceof KeymapItem ki) {
-        renderConflict(ki.c(), fg, gray, capBorder);
+        renderConflict(ki.c(), fg, gray);
       }
       else if (p instanceof IdeaIgnoredItem ii) {
-        renderConflict(ii.c(), fg, gray, capBorder);
+        renderConflict(ii.c(), fg, gray);
       }
       else if (p instanceof ConflictAdvice.Supplement s) {
         primary(AllIcons.General.Information, s.macSide(), fg, false);
         secondary(s.keys(), gray);   // curated free-text keys, not a real Shortcut — plain label
       }
       else if (p instanceof ConflictScan.InternalConflict c) {
-        primary(AllIcons.General.Information, actionSummary(c.actions()), fg, false);
-        right.add(Keycaps.forShortcuts(List.of(c.shortcut()), fg, capBorder));
+        primary(AllIcons.General.Information, actionsLabel(c.actions()), fg, false);
+        right.add(Keycaps.forShortcuts(List.of(c.shortcut()), fg));
       }
       else if (p instanceof ModifiedItem mi) {
-        renderModified(mi.m(), fg, gray, capBorder);
+        renderModified(mi.m(), fg, gray);
       }
       else if (p instanceof InheritedItem it) {
-        renderModified(it.m(), fg, gray, capBorder);   // same row shape as a modified binding
+        renderModified(it.m(), fg, gray);   // same row shape as a modified binding
       }
     }
 
-    private void renderModified(ConflictScan.ModifiedBinding m, Color fg, Color gray, Color capBorder) {
+    private void renderModified(ConflictScan.ModifiedBinding m, Color fg, Color gray) {
       primary(AllIcons.General.Information, m.action().label(), fg, false);
-      if (showActionIds) secondary(m.action().id(), gray);
+      String meta = actionMeta(m.action().id());
+      if (meta != null) secondary(meta, gray);
       if (m.shortcuts().isEmpty()) secondary("(removed)", gray);
-      else right.add(Keycaps.forShortcuts(m.shortcuts(), fg, capBorder));
+      else right.add(Keycaps.forShortcuts(m.shortcuts(), fg));
     }
 
-    private void renderConflict(ConflictScan.ExternalConflict c, Color fg, Color gray, Color capBorder) {
+    private void renderConflict(ConflictScan.ExternalConflict c, Color fg, Color gray) {
       Icon icon = needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information;
-      primary(icon, actionSummary(c.actions()), fg, false);
+      primary(icon, actionsLabel(c.actions()), fg, false);
       String source = notableSources(c.actions());
       if (source != null) secondary("(" + source + ")", gray);
-      right.add(Keycaps.forKeystroke(c.stroke(), fg, capBorder));
-    }
-
-    private String actionSummary(List<ConflictScan.ActionRef> a) {
-      if (a.isEmpty()) return "";
-      return a.get(0).label() + (a.size() > 1 ? "  +" + (a.size() - 1) : "");
+      right.add(Keycaps.forKeystroke(c.stroke(), fg));
     }
 
     private void primary(@Nullable Icon icon, String text, Color color, boolean bold) {
@@ -2369,7 +2527,7 @@ public final class ConflictReportDialog extends DialogWrapper {
    * (Ä Ö Ü ß). A live status line flags whether the assembled shortcut hits macOS <i>or</i> is
    * already used elsewhere in this keymap.
    */
-  private static final class ShortcutInputDialog extends DialogWrapper {
+  private final class ShortcutInputDialog extends DialogWrapper {
     private static final int MODIFIER_MASK = InputEvent.META_DOWN_MASK | InputEvent.ALT_DOWN_MASK
                                            | InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK;
     // Keys that can't be typed/pressed into the field (bare ones drive the dialog); pick via a radio.
@@ -2394,7 +2552,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     private int keyCode = KeyEvent.VK_UNDEFINED;  // the chosen key; the source of truth for build()
     private boolean settingText;                  // true while the field is set programmatically
     private KeyStroke result;
-    private ActionCheckboxList checkList;          // editable pick list, shown by default
+    private EditActionList checkList;              // editable pick list, shown by default
     private JComponent listScroll;                 // scroll host for checkList; "Hide actions" collapses it
 
     ShortcutInputDialog(@Nullable Project project, Keymap keymap, KeyStroke original,
@@ -2462,7 +2620,7 @@ public final class ConflictReportDialog extends DialogWrapper {
         keyRow.add(radio);
       }
 
-      checkList = new ActionCheckboxList(movingIds);
+      checkList = new EditActionList(movingIds, false);
       listScroll = cappedScroll(checkList);   // shown by default (spec 0003)
       JBLabel movesCount = new JBLabel();
       checkList.setOnChange(() -> movesCount.setText(
@@ -2470,7 +2628,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       movesCount.setText(affected + " of " + affected + " mapping(s) on this key will move.");
 
       FormBuilder form = FormBuilder.createFormBuilder()
-        .addLabeledComponent("Current:", Keycaps.forKeystroke(original, null, null))
+        .addLabeledComponent("Current:", Keycaps.forKeystroke(original, null))
         .addLabeledComponent("Key:", keyRow)
         .addLabeledComponent("Modifiers:", modifiers)
         .addLabeledComponent("New:", previewCaps)
@@ -2549,7 +2707,7 @@ public final class ConflictReportDialog extends DialogWrapper {
         previewCaps.add(dash);
       }
       else {
-        previewCaps.add(Keycaps.forKeystroke(ks, null, null));
+        previewCaps.add(Keycaps.forKeystroke(ks, null));
       }
       previewCaps.revalidate();
       previewCaps.repaint();
