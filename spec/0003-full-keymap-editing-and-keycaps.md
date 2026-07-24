@@ -50,10 +50,17 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
   "highlight" style (drawn in the glyph colour) — there is no dimmer variant.
 - Gear toggles **Show Action IDs** and **Show Keymap** append the action id
   and/or the keymap that defines the binding (nearest declaring ancestor),
-  comma-separated, next to the name — in the navigator, detail pane **and** the
-  confirm-dialog lists.
+  **dimmed, comma-separated, no parentheses**, next to the name in **every**
+  surface — navigator, detail pane, conflict action list, section-contents
+  listing, confirm-dialog lists.
+- Shortcut keycaps are **right-aligned** in every list (tree, section listing,
+  confirm dialogs) and every row is **vertically centred** (BoxLayout.X + glue).
 - The **Remove** confirm dialog shows every shortcut assigned to each action (not
   just one) and, from a per-row/category link, clears them all.
+- The scan-invisible **Supplement** entries (Emoji & Symbols, Dictation) are no
+  longer awareness-only: each names its IDE action (`EmojiAndSymbols`,
+  `RunAnything`) so its detail offers Rebind/Remove/Settings on it (Rebind only
+  when the binding is a keystroke, not the double-⌃ gesture).
 - Renames: **"Revert to default…" → "Revert…"**, **"Open Keymap settings" →
   "Settings…"**. Every **"Settings…"** carries a trailing *external-link* icon
   (`AllIcons.Ide.External_link_arrow`) signalling "leaves the plugin".

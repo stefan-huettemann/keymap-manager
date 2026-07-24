@@ -31,8 +31,9 @@ final class ConflictAdvice {
 
   record Advice(Category category, String note) {}
 
-  /** A real overlap the live scan cannot see — shown statically in the report. */
-  record Supplement(String keys, String ideaSide, String macSide, String note) {}
+  /** A real overlap the live scan cannot see — shown statically in the report. {@code actionId} is the
+   *  IDE action bound to this key (null if none), so the report can still offer Rebind/Remove on it. */
+  record Supplement(String keys, String ideaSide, String macSide, String note, String actionId) {}
 
   private static final Map<String, Advice> BY_ID = new HashMap<>();
   private static final Map<KeyStroke, Advice> BY_STROKE = new HashMap<>();
@@ -164,10 +165,12 @@ final class ConflictAdvice {
   static final List<Supplement> SUPPLEMENT = List.of(
     new Supplement("⌃⌘Space", "Emoji & Symbols", "Emoji & Symbols viewer",
       "Both sides open the Emoji & Symbols viewer — the same thing, nothing to fix. macOS doesn't "
-      + "list this one in the table the scan reads, so it's noted here instead of detected live."),
+      + "list this one in the table the scan reads, so it's noted here instead of detected live.",
+      "EmojiAndSymbols"),
     new Supplement("double-⌃", "Run Anything (double-tap ⌃)", "Dictation (optional)",
       "If you set dictation to a double-tap of Control, it takes over the Run Anything gesture. "
-      + "Keep dictation on the 🌐 (fn) key or off. Tap-gestures can't be detected by the scan."));
+      + "Keep dictation on the 🌐 (fn) key or off. Tap-gestures can't be detected by the scan.",
+      "RunAnything"));
 
   private ConflictAdvice() {}
 }

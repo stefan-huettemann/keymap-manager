@@ -46,7 +46,6 @@ import com.intellij.ui.JBColor;
 import com.intellij.ui.KeyStrokeAdapter;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
-import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.ActionLink;
@@ -80,6 +79,7 @@ import javax.swing.JRadioButton;
 import javax.swing.JTree;
 import javax.swing.KeyStroke;
 import javax.swing.ListCellRenderer;
+import javax.swing.SwingConstants;
 import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
@@ -1479,12 +1479,7 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "works. Changing it is an optional, purely cosmetic tidy-up.");
     }
     else if (payload instanceof ConflictAdvice.Supplement s) {
-      String note = escape(s.note()) + " It isn't an actual shortcut in this keymap — the scan can't "
-        + "see it — so there is nothing here to remove or rebind; it's listed for awareness only.";
-      addBlock(shortcutHeaderRow(null, s.keys()));   // curated free-text keys, not a real Shortcut
-      addHtml(factRow("{ide}", escape(s.ideaSide()))
-        + factRow("macOS", escape(s.macSide()))
-        + callout("What this means", note));
+      buildSupplementDetail(s);
     }
     else if (payload instanceof ConflictScan.InternalConflict c) {
       buildInternalDetail(c);
@@ -1562,32 +1557,33 @@ public final class ConflictReportDialog extends DialogWrapper {
       for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
         if (ideaIgnored(c) != ignored) continue;
         Object payload = ignored ? new IdeaIgnoredItem(c) : new KeymapItem(c);
-        list.add(detailListRow(actionsLabel(c.actions()), Keycaps.forKeystroke(c.stroke(), null), payload));
+        list.add(detailListRow(actionsLabel(c.actions()), null, Keycaps.forKeystroke(c.stroke(), null), payload));
         count++;
       }
       if (ignored) {
         for (ConflictAdvice.Supplement s : (scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.<ConflictAdvice.Supplement>of())) {
-          list.add(detailListRow(s.macSide(), null, s));
+          list.add(detailListRow(s.macSide(), null, null, s));
           count++;
         }
       }
     }
     else if (title.equals(SEC_DOUBLE)) {
       for (ConflictScan.InternalConflict c : scan.internal) {
-        list.add(detailListRow(actionsLabel(c.actions()), Keycaps.forShortcut(c.shortcut()), c));
+        list.add(detailListRow(actionsLabel(c.actions()), null, Keycaps.forShortcut(c.shortcut()), c));
         count++;
       }
     }
     else if (title.equals(SEC_MODIFIED)) {
       for (ConflictScan.ModifiedBinding m : scan.modified) {
-        JComponent caps = m.shortcuts().isEmpty() ? null : Keycaps.forShortcuts(m.shortcuts(), null);
-        list.add(detailListRow(m.action().label(), caps, new ModifiedItem(m)));
+        JComponent caps = m.shortcuts().isEmpty() ? grayText("(removed)") : Keycaps.forShortcuts(m.shortcuts(), null);
+        list.add(detailListRow(m.action().label(), actionMeta(m.action().id()), caps, new ModifiedItem(m)));
         count++;
       }
     }
     else if (title.equals(SEC_INHERITED)) {
       for (ConflictScan.ModifiedBinding m : scan.inherited) {
-        list.add(detailListRow(m.action().label(), Keycaps.forShortcuts(m.shortcuts(), null), new InheritedItem(m)));
+        list.add(detailListRow(m.action().label(), actionMeta(m.action().id()),
+          Keycaps.forShortcuts(m.shortcuts(), null), new InheritedItem(m)));
         count++;
       }
     }
@@ -1595,13 +1591,25 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   /** One row of a section's contents listing: the name as a link that selects the item in the navigator,
-   *  followed by its shortcut keycaps. */
-  private JComponent detailListRow(String label, @Nullable JComponent caps, Object payload) {
-    JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(1)));
+   *  the dimmed id/keymap meta, then the shortcut keycaps <b>right-aligned</b> (X-axis box + glue). */
+  private JComponent detailListRow(String label, @Nullable String meta, @Nullable JComponent caps, Object payload) {
+    JPanel p = new JPanel();
+    p.setLayout(new BoxLayout(p, BoxLayout.X_AXIS));
     p.setOpaque(false);
     p.setAlignmentX(Component.LEFT_ALIGNMENT);
-    p.add(new ActionLink(label, (ActionListener) e -> selectPayloadInTree(payload)));
-    if (caps != null) p.add(caps);
+    ActionLink link = new ActionLink(label, (ActionListener) e -> selectPayloadInTree(payload));
+    link.setAlignmentY(Component.CENTER_ALIGNMENT);
+    p.add(link);
+    if (meta != null) {
+      JBLabel m = grayText(meta);
+      m.setBorder(JBUI.Borders.emptyLeft(4));
+      p.add(m);
+    }
+    p.add(Box.createHorizontalGlue());
+    if (caps != null) {
+      caps.setAlignmentY(Component.CENTER_ALIGNMENT);
+      p.add(caps);
+    }
     return p;
   }
 
@@ -1668,7 +1676,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       ? "This keymap removes a shortcut it would otherwise inherit from the parent keymap."
       : "This keymap declares this shortcut itself, so it differs from the parent keymap it inherits from.";
     addBlock(shortcutHeaderRow(cleared ? null : Keycaps.forShortcuts(m.shortcuts(), null), header));
-    addHtml(factRow("Action", escape(actionLabelWithId(a)))
+    addHtml(factRow("Action", actionLabelHtml(a))
       + (a.source() != null ? factRow("Source", escape(a.source())) : "")
       + callout("What this is", escape(body)));
     addBlock(actionEditLinks(a, m.shortcuts(), true));
@@ -1679,11 +1687,35 @@ public final class ConflictReportDialog extends DialogWrapper {
   private void buildInheritedDetail(ConflictScan.ModifiedBinding m) {
     ConflictScan.ActionRef a = m.action();
     addBlock(shortcutHeaderRow(Keycaps.forShortcuts(m.shortcuts(), null), null));
-    addHtml(factRow("Action", escape(actionLabelWithId(a)))
+    addHtml(factRow("Action", actionLabelHtml(a))
       + (a.source() != null ? factRow("Source", escape(a.source())) : "")
       + callout("What this is", escape("This keymap inherits this shortcut from a parent keymap. Rebind "
         + "or remove it here to override the inherited binding; the first edit derives an editable copy.")));
     addBlock(actionEditLinks(a, m.shortcuts(), false));
+  }
+
+  /** A curated overlap the live scan can't see (Emoji & Symbols, Dictation). The macOS side isn't in the
+   *  scanned table, but the IDE action bound to the key <b>is</b> in the keymap, so we offer the same edit
+   *  links on it (Rebind when it's a keystroke; Remove clears it; Settings). Falls back to Settings only
+   *  when the action isn't bound here. */
+  private void buildSupplementDetail(ConflictAdvice.Supplement s) {
+    List<Shortcut> scs = s.actionId() != null ? List.of(keymap.getShortcuts(s.actionId())) : List.of();
+    String tail = scs.isEmpty()
+      ? " The macOS side can't be detected by the live scan, and no IDE action is bound to this key here."
+      : " The macOS side can't be detected by the live scan; the IDE action bound to this key is editable below.";
+    addBlock(shortcutHeaderRow(null, s.keys()));   // "keys" is descriptive text (may be a gesture), not a Shortcut
+    addHtml(factRow("{ide}", escape(s.ideaSide()))
+      + factRow("macOS", escape(s.macSide()))
+      + callout("What this means", escape(s.note()) + tail));
+    if (!scs.isEmpty()) {
+      addBlock(actionEditLinks(new ConflictScan.ActionRef(s.actionId(), null, null, null), scs, false));
+    }
+    else {
+      JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
+      row.setOpaque(false);
+      row.add(settingsLink());
+      addBlock(row);
+    }
   }
 
   /** The per-row edit links for one action's binding: Rebind… · Remove… · [Revert…] · Settings….
@@ -1725,10 +1757,13 @@ public final class ConflictReportDialog extends DialogWrapper {
     return link;
   }
 
-  /** Action name, plus the "Show Action IDs" / "Show Keymap" meta in parentheses when either is on. */
-  private String actionLabelWithId(ConflictScan.ActionRef a) {
+  /** Action name as HTML, with the "Show Action IDs" / "Show Keymap" meta appended in the dimmed id
+   *  colour (no parentheses, comma-separated) when either toggle is on. */
+  private String actionLabelHtml(ConflictScan.ActionRef a) {
+    String s = escape(a.label());
     String meta = actionMeta(a.id());
-    return meta != null ? a.label() + "  (" + meta + ")" : a.label();
+    if (meta != null) s += "&nbsp;&nbsp;<span style='color:" + hex(grayColour()) + "'>" + escape(meta) + "</span>";
+    return s;
   }
 
   /** The comma-separated meta shown next to an action name per the gear toggles: the action id (Show
@@ -2085,23 +2120,37 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
 
     private JComponent row(String id, boolean showTarget) {
-      JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(1)));
+      JPanel p = new JPanel();   // X-axis box so everything is vertically centred and keycaps right-align
+      p.setLayout(new BoxLayout(p, BoxLayout.X_AXIS));
       p.setOpaque(false);
       p.setAlignmentX(Component.LEFT_ALIGNMENT);
-      String meta = actionMeta(id);
-      JCheckBox cb = new JCheckBox(meta != null ? actionName(id) + "   (" + meta + ")" : actionName(id), true);
+
+      JCheckBox cb = new JCheckBox(actionName(id), true);
       cb.setOpaque(false);
+      cb.setAlignmentY(Component.CENTER_ALIGNMENT);
       cb.addItemListener(e -> { if (onChange != null) onChange.run(); });
       boxes.add(cb);
       p.add(cb);
+      String meta = actionMeta(id);   // id / defining keymap, dimmed, no parentheses
+      if (meta != null) {
+        JBLabel m = grayText(meta);
+        m.setBorder(JBUI.Borders.emptyLeft(4));
+        p.add(m);
+      }
+      p.add(Box.createHorizontalGlue());   // push the shortcuts to the right edge
       List<Shortcut> current = List.of(keymap.getShortcuts(id));   // all shortcuts, not just one (spec 0003)
-      if (!current.isEmpty()) p.add(Keycaps.forShortcuts(current, null));
+      if (!current.isEmpty()) p.add(vcenter(Keycaps.forShortcuts(current, null)));
       if (showTarget) {
-        p.add(grayText("→"));
+        p.add(vcenter(grayText("→")));
         List<Shortcut> to = revertTarget(id);
-        p.add(to.isEmpty() ? grayText("unbound") : Keycaps.forShortcuts(to, null));
+        p.add(vcenter(to.isEmpty() ? grayText("unbound") : Keycaps.forShortcuts(to, null)));
       }
       return p;
+    }
+
+    private JComponent vcenter(JComponent c) {
+      c.setAlignmentY(Component.CENTER_ALIGNMENT);
+      return c;
     }
 
     void setOnChange(Runnable r) { onChange = r; }
@@ -2219,7 +2268,8 @@ public final class ConflictReportDialog extends DialogWrapper {
       return "Overlaps {ide}'s own Keymap tool doesn't flag: keys macOS also uses for switching "
         + "windows ({ide} gets them first while it's in front), plus a couple of macOS features the "
         + "live scan can't see (the Emoji viewer, Dictation). All keep working and are listed for "
-        + "completeness. The window-switch ones can still be changed; the scan-invisible notes cannot.";
+        + "completeness; each can still be rebound or removed here (the macOS side is changed in "
+        + "System Settings).";
     }
     if (title.equals(SEC_MODIFIED)) {
       return "Shortcuts this keymap declares itself — the ones that differ from its parent keymap "
@@ -2324,10 +2374,11 @@ public final class ConflictReportDialog extends DialogWrapper {
         checks.add(cb);
         r.add(cb);
         r.add(actionLabel(a));
-        if (showActionIds) {
-          JBLabel id = new JBLabel(a.id());
-          id.setForeground(grayColour());
-          r.add(id);
+        String meta = actionMeta(a.id());   // id / defining keymap, dimmed, no parentheses
+        if (meta != null) {
+          JBLabel m = new JBLabel(meta);
+          m.setForeground(grayColour());
+          r.add(m);
         }
         String src = notableSource(a);
         if (src != null) {
@@ -2381,26 +2432,20 @@ public final class ConflictReportDialog extends DialogWrapper {
   // ---- renderer -------------------------------------------------------------------------------
 
   /**
-   * Full-width navigator renderer (spec 0003): the primary label (icon + section/action name) on the
-   * left, the secondary info (count / source id) and the shortcut as {@link Keycaps} <b>right-aligned</b>
-   * with a margin from the right edge. It is a {@link JPanel}, not a {@link SimpleColoredComponent}, so
-   * it stretches the cell to the viewport width (see {@link #getPreferredSize()}) and paints its own
-   * selection background.
+   * Full-width navigator renderer (spec 0003). One horizontal row, laid out with {@link BoxLayout} on the
+   * X axis so every part is <b>vertically centred</b>: {@code [icon + name] … glue … [gray id/keymap meta]
+   * [shortcut keycaps]}. The glue pushes the meta + keycaps to the <b>right edge</b> (the panel stretches
+   * to the viewport width — see {@link #getPreferredSize()}). It paints its own selection background.
    */
   private final class Renderer extends JPanel implements TreeCellRenderer {
-    private final SimpleColoredComponent left = new SimpleColoredComponent();
-    private final JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0));
     private boolean selected;
     private boolean focused;
     private int availWidth;
 
     Renderer() {
-      super(new BorderLayout(JBUI.scale(8), 0));
+      setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
       setOpaque(false);
-      left.setOpaque(false);
-      right.setOpaque(false);
-      add(left, BorderLayout.CENTER);   // takes the leftover width; the shortcut hugs the right edge
-      add(right, BorderLayout.EAST);
+      setBorder(JBUI.Borders.emptyRight(12));   // margin from the right edge
     }
 
     @Override
@@ -2408,82 +2453,86 @@ public final class ConflictReportDialog extends DialogWrapper {
                                                   boolean leaf, int row, boolean hasFocus) {
       this.selected = sel;
       this.focused = tree.hasFocus();
-      left.clear();
-      right.removeAll();
+      removeAll();
 
       Color fg = UIUtil.getTreeForeground(sel, focused);
       Color gray = sel ? fg : UIUtil.getContextHelpForeground();
-      left.setForeground(fg);
-
-      render(((DefaultMutableTreeNode) value).getUserObject(), fg, gray);
+      layoutRow(((DefaultMutableTreeNode) value).getUserObject(), fg, gray);
 
       availWidth = availableWidth(tree, ((DefaultMutableTreeNode) value).getLevel());
       return this;
     }
 
-    private void render(Object p, Color fg, Color gray) {
+    /** Build the row: primary (icon + name) on the left, then glue, then the gray meta and keycaps
+     *  right-aligned. Any component with no content for this payload is simply omitted. */
+    private void layoutRow(Object p, Color fg, Color gray) {
+      Icon icon = null;
+      String name = "";
+      boolean bold = false;
+      String metaRight = null;                 // gray text hugging the right (count / source / id·keymap)
+      JComponent caps = null;                  // keycaps, or a gray "(removed)" label
+
       if (p instanceof Section s) {
-        primary(null, subIde(s.title()), fg, true);
-        secondary("(" + s.count() + ")", gray);
+        name = subIde(s.title()); bold = true; metaRight = "(" + s.count() + ")";
       }
       else if (p instanceof Subtitle st) {
-        primary(null, subIde(sectionSubtitle(st.sectionTitle())), gray, false);   // gray explanation row
+        name = subIde(sectionSubtitle(st.sectionTitle())); fg = gray;   // gray explanation row
       }
       else if (p instanceof Empty e) {
-        primary(AllIcons.General.InspectionsOK, e.message(), gray, false);
+        icon = AllIcons.General.InspectionsOK; name = e.message(); fg = gray;
       }
       else if (p instanceof KeymapItem ki) {
-        renderConflict(ki.c(), fg, gray);
+        ConflictScan.ExternalConflict c = ki.c();
+        icon = needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information;
+        name = actionsLabel(c.actions()); metaRight = notableSources(c.actions()); caps = Keycaps.forKeystroke(c.stroke(), fg);
       }
       else if (p instanceof IdeaIgnoredItem ii) {
-        renderConflict(ii.c(), fg, gray);
+        ConflictScan.ExternalConflict c = ii.c();
+        icon = needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information;
+        name = actionsLabel(c.actions()); metaRight = notableSources(c.actions()); caps = Keycaps.forKeystroke(c.stroke(), fg);
       }
       else if (p instanceof ConflictAdvice.Supplement s) {
-        primary(AllIcons.General.Information, s.macSide(), fg, false);
-        secondary(s.keys(), gray);   // curated free-text keys, not a real Shortcut — plain label
+        icon = AllIcons.General.Information; name = s.macSide(); metaRight = s.keys();
       }
       else if (p instanceof ConflictScan.InternalConflict c) {
-        primary(AllIcons.General.Information, actionsLabel(c.actions()), fg, false);
-        right.add(Keycaps.forShortcuts(List.of(c.shortcut()), fg));
+        icon = AllIcons.General.Information; name = actionsLabel(c.actions()); caps = Keycaps.forShortcuts(List.of(c.shortcut()), fg);
       }
       else if (p instanceof ModifiedItem mi) {
-        renderModified(mi.m(), fg, gray);
+        icon = AllIcons.General.Information; name = mi.m().action().label(); metaRight = actionMeta(mi.m().action().id());
+        caps = mi.m().shortcuts().isEmpty() ? grayLabel("(removed)", gray) : Keycaps.forShortcuts(mi.m().shortcuts(), fg);
       }
       else if (p instanceof InheritedItem it) {
-        renderModified(it.m(), fg, gray);   // same row shape as a modified binding
+        icon = AllIcons.General.Information; name = it.m().action().label(); metaRight = actionMeta(it.m().action().id());
+        caps = it.m().shortcuts().isEmpty() ? grayLabel("(removed)", gray) : Keycaps.forShortcuts(it.m().shortcuts(), fg);
+      }
+
+      JLabel main = new JLabel(name, icon, SwingConstants.LEADING);
+      main.setForeground(fg);
+      if (bold) main.setFont(main.getFont().deriveFont(Font.BOLD));
+      main.setAlignmentY(CENTER_ALIGNMENT);
+      add(main);
+
+      add(Box.createHorizontalGlue());
+      if (metaRight != null) {
+        JBLabel m = grayLabel(metaRight, gray);
+        m.setAlignmentY(CENTER_ALIGNMENT);
+        add(m);
+        if (caps != null) add(Box.createHorizontalStrut(JBUI.scale(8)));
+      }
+      if (caps != null) {
+        caps.setAlignmentY(CENTER_ALIGNMENT);
+        add(caps);
       }
     }
 
-    private void renderModified(ConflictScan.ModifiedBinding m, Color fg, Color gray) {
-      primary(AllIcons.General.Information, m.action().label(), fg, false);
-      String meta = actionMeta(m.action().id());
-      if (meta != null) secondary(meta, gray);
-      if (m.shortcuts().isEmpty()) secondary("(removed)", gray);
-      else right.add(Keycaps.forShortcuts(m.shortcuts(), fg));
-    }
-
-    private void renderConflict(ConflictScan.ExternalConflict c, Color fg, Color gray) {
-      Icon icon = needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information;
-      primary(icon, actionsLabel(c.actions()), fg, false);
-      String source = notableSources(c.actions());
-      if (source != null) secondary("(" + source + ")", gray);
-      right.add(Keycaps.forKeystroke(c.stroke(), fg));
-    }
-
-    private void primary(@Nullable Icon icon, String text, Color color, boolean bold) {
-      left.setIcon(icon);
-      int style = bold ? SimpleTextAttributes.STYLE_BOLD : SimpleTextAttributes.STYLE_PLAIN;
-      left.append(text, new SimpleTextAttributes(style, color));
-    }
-
-    private void secondary(String text, Color gray) {
+    private JBLabel grayLabel(String text, Color gray) {
       JBLabel l = new JBLabel(text);
       l.setForeground(gray);
-      right.add(l);
+      return l;
     }
 
-    /** Stretch the cell to the viewport's right edge so the right panel aligns to it; content wider
-     *  than that (a very long name) keeps its natural width and the tree scrolls horizontally. */
+    /** Stretch the cell to the viewport's right edge so the glue pushes the right group to it; content
+     *  wider than that (a very long name) keeps its natural width and the tree scrolls horizontally. */
     @Override
     public Dimension getPreferredSize() {
       Dimension d = super.getPreferredSize();
