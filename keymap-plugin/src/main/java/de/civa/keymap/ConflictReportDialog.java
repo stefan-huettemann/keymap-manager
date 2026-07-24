@@ -1392,7 +1392,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     if (payload instanceof Section s) {
       addHtml("<h3 style='margin:0 0 4px 0'>" + escape(s.title()) + "</h3>"
         + grayBlock(escape(sectionBlurb(s.title()))));
-      if (s.title().equals(SEC_MODIFIED) && keymap.canModify() && !scan.modified.isEmpty()) {
+      if (s.title().equals(SEC_MODIFIED) && !scan.modified.isEmpty()) {
         List<String> allIds = scan.modified.stream().map(m -> m.action().id()).toList();
         JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
         row.setOpaque(false);
@@ -1474,10 +1474,10 @@ public final class ConflictReportDialog extends DialogWrapper {
       + callout("What this is", escape(body)));
     JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
     row.setOpaque(false);
-    if (keymap.canModify()) {
-      row.add(new ActionLink("Revert to default…", (ActionListener) e -> confirmRevert(List.of(a.id()))));
-      row.add(dot());
-    }
+    // Revert is offered on read-only keymaps too — confirmRevert → ensureEditable() derives and
+    // activates a copy first (with a notice), like Rebind/Remove already do.
+    row.add(new ActionLink("Revert to default…", (ActionListener) e -> confirmRevert(List.of(a.id()))));
+    row.add(dot());
     row.add(new ActionLink("Open Keymap settings", (ActionListener) e -> openKeymapSettings()));
     addBlock(row);
   }
@@ -1632,7 +1632,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   /** Drop this keymap's own declarations for the given actions so they re-inherit the parent binding
-   *  (an action the parent doesn't bind becomes unbound). Only reached for an editable keymap. */
+   *  (an action the parent doesn't bind becomes unbound). A read-only keymap is copied to an editable
+   *  one first (and activated) via {@link #ensureEditable()}. */
   private void revertToDefault(List<String> ids) {
     Keymap target = ensureEditable();
     if (!(target instanceof KeymapImpl impl)) return;
@@ -1645,14 +1646,18 @@ public final class ConflictReportDialog extends DialogWrapper {
     updateActionButtons();
   }
 
-  /** Revert confirmation: a "Show actions" checkbox on the button row reveals an editable pick list. */
+  /** Revert confirmation. For a bulk revert (more than one action) the pick list is shown up-front so
+   *  the subset can be chosen before committing; a single-action revert keeps it behind the "Show
+   *  actions" checkbox. A read-only keymap is copied to an editable one on confirm, so it says so. */
   private final class RevertConfirmDialog extends DialogWrapper {
     private final List<String> ids;
+    private final boolean bulk;   // >1 action: reveal the pick list up-front (nothing to pick from one)
     private ActionCheckboxList checkList;
 
     RevertConfirmDialog(List<String> ids) {
       super(project);
       this.ids = ids;
+      this.bulk = ids.size() > 1;
       setTitle("Revert to Default");
       init();
       setResizable(true);  // a resizable window is movable on macOS and can be resized to fit content
@@ -1662,7 +1667,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     @Override
     protected JComponent createCenterPanel() {
       checkList = new ActionCheckboxList(ids);
-      checkList.setVisible(false);
+      checkList.setVisible(bulk);   // choose the subset before confirming; single-action stays collapsed
 
       JBLabel summary = new JBLabel();
       summary.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -1677,6 +1682,14 @@ public final class ConflictReportDialog extends DialogWrapper {
       JPanel stack = new JPanel();
       stack.setLayout(new BoxLayout(stack, BoxLayout.Y_AXIS));
       stack.add(summary);
+      if (!keymap.canModify()) {   // reverting derives+activates an editable copy, like Rebind/Remove
+        JBLabel copyNote = new JBLabel("“" + keymap.getPresentableName()
+          + "” is read-only — an editable copy will be created and activated.");
+        copyNote.setForeground(UIUtil.getContextHelpForeground());
+        copyNote.setAlignmentX(Component.LEFT_ALIGNMENT);
+        copyNote.setBorder(JBUI.Borders.emptyTop(6));
+        stack.add(copyNote);
+      }
       stack.add(note);
       stack.add(checkList);
 
@@ -1694,6 +1707,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     @Override
     protected JComponent createDoNotAskCheckbox() {
       JCheckBox show = new JCheckBox("Show actions");
+      show.setSelected(bulk);   // matches the up-front pick list shown for a bulk revert
       show.addActionListener(e -> {
         checkList.setVisible(show.isSelected());
         resizeToFit(checkList);
