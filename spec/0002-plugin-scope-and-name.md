@@ -29,6 +29,13 @@ low-cost feature. Decision: relax it.
 
 ## 2. Decision A — scope (agreed: relax)
 
+> **Superseded in part by [0003](0003-full-keymap-editing-and-keycaps.md) (2026-07-24).**
+> The "not a general tree editor for every action" rudder below was relaxed: the
+> report now edits the keymap's whole effective binding set (own + inherited). The
+> surviving limit is narrower — we list every **bound** shortcut but still not
+> every *action* (binding a shortcut onto an unbound action stays a Settings →
+> Keymap job). The macOS-focus rudder is unchanged.
+
 The plugin is a **macOS-focused keymap manager for JetBrains IDEs**, not merely a
 conflict tool. Proposed replacement for the `CLAUDE.md` scope statement:
 
