@@ -19,8 +19,10 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Live conflict scan of a keymap.
@@ -88,14 +90,18 @@ final class ConflictScan {
   final List<InternalConflict> internal;
   /** Bindings this keymap declares itself (its diff against the parent). */
   final List<ModifiedBinding> modified;
+  /** Effective bindings inherited from parent keymaps: shortcut-bearing, not declared here (spec 0003). */
+  final List<ModifiedBinding> inherited;
 
   private ConflictScan(boolean jbrApiAvailable, boolean ownKeymap, List<ExternalConflict> keymapConflicts,
-                       List<InternalConflict> internal, List<ModifiedBinding> modified) {
+                       List<InternalConflict> internal, List<ModifiedBinding> modified,
+                       List<ModifiedBinding> inherited) {
     this.jbrApiAvailable = jbrApiAvailable;
     this.ownKeymap = ownKeymap;
     this.keymapConflicts = keymapConflicts;
     this.internal = internal;
     this.modified = modified;
+    this.inherited = inherited;
   }
 
   static ConflictScan of(Keymap keymap) {
@@ -138,8 +144,12 @@ final class ConflictScan {
     internal.sort(Comparator.comparingInt((InternalConflict c) -> -c.actions().size())
       .thenComparing(c -> KeymapUtil.getShortcutText(c.shortcut())));
 
+    List<ModifiedBinding> modified = modifiedBindings(keymap);
+    Set<String> ownIds = new HashSet<>();
+    for (ModifiedBinding m : modified) ownIds.add(m.action().id());
     return new ConflictScan(system != null, isOurKeymap(keymap),
-      List.copyOf(keymapConflicts), List.copyOf(internal), List.copyOf(modifiedBindings(keymap)));
+      List.copyOf(keymapConflicts), List.copyOf(internal),
+      List.copyOf(modified), List.copyOf(inheritedBindings(keymap, ownIds)));
   }
 
   private static Comparator<ExternalConflict> externalOrder() {
@@ -182,6 +192,24 @@ final class ConflictScan {
     for (Object child : impl.writeScheme().getChildren("action")) {
       String id = ((Element) child).getAttributeValue("id");
       if (id != null && !id.isEmpty()) ids.add(id);
+    }
+    List<String> sorted = ids.stream().distinct().sorted().toList();
+    List<ModifiedBinding> result = new ArrayList<>(sorted.size());
+    for (ActionRef ref : refs(sorted)) {
+      result.add(new ModifiedBinding(ref, List.of(keymap.getShortcuts(ref.id()))));
+    }
+    return result;
+  }
+
+  /** Effective bindings inherited from the parent chain: every shortcut-bearing action id the keymap
+   *  reports ({@link Keymap#getActionIdList()}) that it does <b>not</b> declare itself ({@code ownIds}).
+   *  Actions with no shortcut are excluded — binding one is a Settings → Keymap job (spec 0003). */
+  private static List<ModifiedBinding> inheritedBindings(Keymap keymap, Set<String> ownIds) {
+    List<String> ids = new ArrayList<>();
+    for (String id : keymap.getActionIdList()) {
+      if (ownIds.contains(id)) continue;
+      if (keymap.getShortcuts(id).length == 0) continue;
+      ids.add(id);
     }
     List<String> sorted = ids.stream().distinct().sorted().toList();
     List<ModifiedBinding> result = new ArrayList<>(sorted.size());
