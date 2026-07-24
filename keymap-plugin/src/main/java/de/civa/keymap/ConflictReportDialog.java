@@ -40,13 +40,13 @@ import com.intellij.openapi.util.JDOMUtil;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWrapper;
-import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.DocumentAdapter;
 import com.intellij.ui.InplaceButton;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.KeyStrokeAdapter;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.SimpleColoredComponent;
 import com.intellij.ui.SimpleListCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.ActionLink;
@@ -84,12 +84,14 @@ import javax.swing.Scrollable;
 import javax.swing.SwingUtilities;
 import javax.swing.border.Border;
 import javax.swing.event.DocumentEvent;
+import javax.swing.plaf.basic.BasicTreeUI;
 import javax.swing.text.AbstractDocument;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DocumentFilter;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreeCellRenderer;
 import javax.swing.tree.TreePath;
 import javax.swing.tree.TreeSelectionModel;
 import java.awt.AWTEvent;
@@ -100,6 +102,7 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Graphics;
 import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.event.ActionListener;
@@ -159,6 +162,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   private Keymap active;   // the keymap actually active in the IDE (moves on Activate)
   private ConflictScan scan;
   private Tree tree;
+  private JBScrollPane treeScroll;    // scroll host for the navigator; the width source for keycap right-align
   private JPanel detailPanel;         // Swing detail view (replaces the old HTML editor pane)
   private JBScrollPane detailScroll;  // scroll host, also the width source for wrapped text
   private Object currentPayload;      // the tree row the detail currently shows (for re-render)
@@ -205,9 +209,25 @@ public final class ConflictReportDialog extends DialogWrapper {
     tree = new Tree(new DefaultTreeModel(buildRoot()));
     tree.setRootVisible(false);
     tree.setShowsRootHandles(true);
+    tree.setRowHeight(JBUI.scale(24));   // fixed, tall enough for the keycap frames
     tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
     tree.setCellRenderer(new Renderer());
     tree.addTreeSelectionListener(e -> showDetail(payloadOf(e.getNewLeadSelectionPath())));
+    treeScroll = new JBScrollPane(tree);
+    // Keycaps right-align to the viewport edge, so re-measure node widths when that edge moves. The
+    // layout cache caches widths, so nudge the row height to force a recompute (guarded on a real
+    // width change so it can't loop). Mirrors the detail pane's width-change re-render below.
+    treeScroll.getViewport().addComponentListener(new ComponentAdapter() {
+      private int lastWidth = -1;
+      @Override public void componentResized(ComponentEvent e) {
+        int w = treeScroll.getViewport().getWidth();
+        if (w == lastWidth) return;
+        lastWidth = w;
+        int h = tree.getRowHeight();
+        tree.setRowHeight(h + 1);   // change → fires; recompute happens on the restore
+        tree.setRowHeight(h);
+      }
+    });
 
     detailPanel = new DetailPanel();
     detailPanel.setBorder(JBUI.Borders.empty(8, 10));
@@ -232,7 +252,7 @@ public final class ConflictReportDialog extends DialogWrapper {
 
     // Details pane: the tree navigator and its per-row explanation.
     OnePixelSplitter splitter = new OnePixelSplitter(false, 0.44f);
-    splitter.setFirstComponent(new JBScrollPane(tree));
+    splitter.setFirstComponent(treeScroll);
     splitter.setSecondComponent(detailScroll);
 
     // Header stacks the keymap selector above the prominent status summary.
@@ -1416,8 +1436,8 @@ public final class ConflictReportDialog extends DialogWrapper {
     else if (payload instanceof ConflictAdvice.Supplement s) {
       String note = escape(s.note()) + " It isn't an actual shortcut in this keymap — the scan can't "
         + "see it — so there is nothing here to remove or rebind; it's listed for awareness only.";
-      addHtml(shortcutHeader(s.keys())
-        + factRow("{ide}", escape(s.ideaSide()))
+      addBlock(shortcutHeaderRow(null, s.keys()));   // curated free-text keys, not a real Shortcut
+      addHtml(factRow("{ide}", escape(s.ideaSide()))
         + factRow("macOS", escape(s.macSide()))
         + callout("What this means", note));
     }
@@ -1435,9 +1455,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   /** A conflict on one keystroke: facts and status on top, the interactive action list and its fix
    *  links in the middle, the advice below. */
   private void buildConflictDetail(ConflictScan.ExternalConflict c, @Nullable String extraNoteHtml) {
-    addHtml(shortcutHeader(KeymapUtil.getKeystrokeText(c.stroke()))
-      + statusBadge(c)
-      + factRow("macOS", escape(macList(c))));
+    addBlock(shortcutHeaderRow(Keycaps.forKeystroke(c.stroke(), null, null), null));
+    addHtml(statusBadge(c) + factRow("macOS", escape(macList(c))));
     addBlock(boldLabel("Actions"));
     ActionListView list = new ActionListView(c.stroke(), c.actions());
     detailPanel.add(list);
@@ -1450,7 +1469,8 @@ public final class ConflictReportDialog extends DialogWrapper {
   /** A key bound to several actions in the keymap; interactive so a stacked one can be moved off. */
   private void buildInternalDetail(ConflictScan.InternalConflict c) {
     KeyStroke first = ((KeyboardShortcut) c.shortcut()).getFirstKeyStroke();
-    addHtml(shortcutHeader(KeymapUtil.getShortcutText(c.shortcut())) + internalStatus(c));
+    addBlock(shortcutHeaderRow(Keycaps.forShortcut(c.shortcut()), null));
+    addHtml(internalStatus(c));
     addBlock(boldLabel("Actions"));
     ActionListView list = new ActionListView(first, c.actions());
     detailPanel.add(list);
@@ -1468,8 +1488,8 @@ public final class ConflictReportDialog extends DialogWrapper {
     String body = cleared
       ? "This keymap removes a shortcut it would otherwise inherit from the parent keymap."
       : "This keymap declares this shortcut itself, so it differs from the parent keymap it inherits from.";
-    addHtml(shortcutHeader(header)
-      + factRow("Action", escape(actionLabelWithId(a)))
+    addBlock(shortcutHeaderRow(cleared ? null : Keycaps.forShortcuts(m.shortcuts(), null, null), header));
+    addHtml(factRow("Action", escape(actionLabelWithId(a)))
       + (a.source() != null ? factRow("Source", escape(a.source())) : "")
       + callout("What this is", escape(body)));
     JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
@@ -1753,10 +1773,25 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   // ---- detail formatting helpers --------------------------------------------------------------
 
-  /** The "Shortcut: ^C" header — label and keystroke on one line, the key a touch larger. */
-  private static String shortcutHeader(String key) {
-    return "<div style='font-weight:bold; margin:0 0 6px 0'>Shortcut:&nbsp;&nbsp;"
-      + "<span style='font-size:13pt'>" + escape(key) + "</span></div>";
+  /** The "Shortcut:  [⌘][C]" detail header — a bold label beside the shortcut as {@link Keycaps}. When
+   *  {@code caps} is null (a cleared binding / a curated free-text key), {@code fallbackText} is shown
+   *  as a gray label instead. */
+  private JComponent shortcutHeaderRow(@Nullable JComponent caps, @Nullable String fallbackText) {
+    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), JBUI.scale(2)));
+    row.setOpaque(false);
+    row.setAlignmentX(Component.LEFT_ALIGNMENT);
+    JBLabel label = new JBLabel("Shortcut:");
+    label.setFont(label.getFont().deriveFont(Font.BOLD));
+    row.add(label);
+    if (caps != null) {
+      row.add(caps);
+    }
+    else if (fallbackText != null) {
+      JBLabel fallback = new JBLabel(fallbackText);
+      fallback.setForeground(grayColour());
+      row.add(fallback);
+    }
+    return row;
   }
 
   private String statusBadge(ConflictScan.ExternalConflict c) {
@@ -1988,58 +2023,137 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   // ---- renderer -------------------------------------------------------------------------------
 
-  private final class Renderer extends ColoredTreeCellRenderer {
+  /**
+   * Full-width navigator renderer (spec 0003): the primary label (icon + section/action name) on the
+   * left, the secondary info (count / source id) and the shortcut as {@link Keycaps} <b>right-aligned</b>
+   * with a margin from the right edge. It is a {@link JPanel}, not a {@link SimpleColoredComponent}, so
+   * it stretches the cell to the viewport width (see {@link #getPreferredSize()}) and paints its own
+   * selection background.
+   */
+  private final class Renderer extends JPanel implements TreeCellRenderer {
+    private final SimpleColoredComponent left = new SimpleColoredComponent();
+    private final JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0));
+    private boolean selected;
+    private boolean focused;
+    private int availWidth;
+
+    Renderer() {
+      super(new BorderLayout(JBUI.scale(8), 0));
+      setOpaque(false);
+      left.setOpaque(false);
+      right.setOpaque(false);
+      add(left, BorderLayout.CENTER);   // takes the leftover width; the shortcut hugs the right edge
+      add(right, BorderLayout.EAST);
+    }
+
     @Override
-    public void customizeCellRenderer(JTree tree, Object value, boolean selected, boolean expanded,
-                                      boolean leaf, int row, boolean hasFocus) {
-      Object p = ((DefaultMutableTreeNode) value).getUserObject();
+    public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded,
+                                                  boolean leaf, int row, boolean hasFocus) {
+      this.selected = sel;
+      this.focused = tree.hasFocus();
+      left.clear();
+      right.removeAll();
+
+      Color fg = UIUtil.getTreeForeground(sel, focused);
+      Color gray = sel ? fg : UIUtil.getContextHelpForeground();
+      Color capBorder = sel ? fg : JBColor.border();
+      left.setForeground(fg);
+
+      render(((DefaultMutableTreeNode) value).getUserObject(), fg, gray, capBorder);
+
+      availWidth = availableWidth(tree, ((DefaultMutableTreeNode) value).getLevel());
+      return this;
+    }
+
+    private void render(Object p, Color fg, Color gray, Color capBorder) {
       if (p instanceof Section s) {
-        append(subIde(s.title()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
-        append("  (" + s.count() + ")", SimpleTextAttributes.GRAYED_ATTRIBUTES);
+        primary(null, subIde(s.title()), fg, true);
+        secondary("(" + s.count() + ")", gray);
       }
       else if (p instanceof Empty e) {
-        setIcon(AllIcons.General.InspectionsOK);
-        append(e.message(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+        primary(AllIcons.General.InspectionsOK, e.message(), gray, false);
       }
       else if (p instanceof KeymapItem ki) {
-        renderConflict(ki.c());
+        renderConflict(ki.c(), fg, gray, capBorder);
       }
       else if (p instanceof IdeaIgnoredItem ii) {
-        renderConflict(ii.c());
+        renderConflict(ii.c(), fg, gray, capBorder);
       }
       else if (p instanceof ConflictAdvice.Supplement s) {
-        setIcon(AllIcons.General.Information);
-        append(s.keys(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
-        append("  " + s.macSide(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+        primary(AllIcons.General.Information, s.macSide(), fg, false);
+        secondary(s.keys(), gray);   // curated free-text keys, not a real Shortcut — plain label
       }
       else if (p instanceof ConflictScan.InternalConflict c) {
-        setIcon(AllIcons.General.Information);
-        append(KeymapUtil.getShortcutText(c.shortcut()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
-        append("  " + c.actions().size() + " actions", SimpleTextAttributes.GRAYED_ATTRIBUTES);
+        primary(AllIcons.General.Information, actionSummary(c.actions()), fg, false);
+        right.add(Keycaps.forShortcuts(List.of(c.shortcut()), fg, capBorder));
       }
       else if (p instanceof ModifiedItem mi) {
-        renderModified(mi.m());
+        renderModified(mi.m(), fg, gray, capBorder);
       }
     }
 
-    private void renderModified(ConflictScan.ModifiedBinding m) {
-      setIcon(AllIcons.General.Information);
-      String keys = shortcutsText(m.shortcuts());
-      append(m.action().label(), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
-      append("  " + (keys.isEmpty() ? "(removed)" : keys), SimpleTextAttributes.GRAYED_ATTRIBUTES);
-      if (showActionIds) append("   " + m.action().id(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+    private void renderModified(ConflictScan.ModifiedBinding m, Color fg, Color gray, Color capBorder) {
+      primary(AllIcons.General.Information, m.action().label(), fg, false);
+      if (showActionIds) secondary(m.action().id(), gray);
+      if (m.shortcuts().isEmpty()) secondary("(removed)", gray);
+      else right.add(Keycaps.forShortcuts(m.shortcuts(), fg, capBorder));
     }
 
-    private void renderConflict(ConflictScan.ExternalConflict c) {
-      setIcon(needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information);
-      append(KeymapUtil.getKeystrokeText(c.stroke()), SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES);
-      List<ConflictScan.ActionRef> a = c.actions();
-      String suffix = a.isEmpty() ? "" : a.get(0).label() + (a.size() > 1 ? " +" + (a.size() - 1) : "");
-      append("  " + suffix, SimpleTextAttributes.GRAYED_ATTRIBUTES);
-      // Tag bindings coming from another plugin or the IDE core (JTree cells size to content, so the
-      // tag is appended inline rather than right-aligned; the detail pane shows it per action).
-      String source = notableSources(a);
-      if (source != null) append("   (" + source + ")", SimpleTextAttributes.GRAYED_ATTRIBUTES);
+    private void renderConflict(ConflictScan.ExternalConflict c, Color fg, Color gray, Color capBorder) {
+      Icon icon = needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information;
+      primary(icon, actionSummary(c.actions()), fg, false);
+      String source = notableSources(c.actions());
+      if (source != null) secondary("(" + source + ")", gray);
+      right.add(Keycaps.forKeystroke(c.stroke(), fg, capBorder));
+    }
+
+    private String actionSummary(List<ConflictScan.ActionRef> a) {
+      if (a.isEmpty()) return "";
+      return a.get(0).label() + (a.size() > 1 ? "  +" + (a.size() - 1) : "");
+    }
+
+    private void primary(@Nullable Icon icon, String text, Color color, boolean bold) {
+      left.setIcon(icon);
+      int style = bold ? SimpleTextAttributes.STYLE_BOLD : SimpleTextAttributes.STYLE_PLAIN;
+      left.append(text, new SimpleTextAttributes(style, color));
+    }
+
+    private void secondary(String text, Color gray) {
+      JBLabel l = new JBLabel(text);
+      l.setForeground(gray);
+      right.add(l);
+    }
+
+    /** Stretch the cell to the viewport's right edge so the right panel aligns to it; content wider
+     *  than that (a very long name) keeps its natural width and the tree scrolls horizontally. */
+    @Override
+    public Dimension getPreferredSize() {
+      Dimension d = super.getPreferredSize();
+      if (availWidth > d.width) d.width = availWidth;
+      return d;
+    }
+
+    /** Width from this node's left edge to the viewport's right edge, minus a small margin. Indent is
+     *  approximated from the tree's per-level step (no {@code getRowBounds}, which would recurse). */
+    private int availableWidth(JTree tree, int level) {
+      int vw = treeScroll != null ? treeScroll.getViewport().getWidth() : tree.getVisibleRect().width;
+      if (vw <= 0) return 0;
+      int perLevel = JBUI.scale(20);
+      if (tree.getUI() instanceof BasicTreeUI b) {
+        int p = b.getLeftChildIndent() + b.getRightChildIndent();
+        if (p > 0) perLevel = p;
+      }
+      int indent = tree.getInsets().left + level * perLevel;
+      return Math.max(0, vw - indent - JBUI.scale(12));
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+      if (selected) {
+        g.setColor(UIUtil.getTreeBackground(true, focused));
+        g.fillRect(0, 0, getWidth(), getHeight());
+      }
+      super.paintComponent(g);
     }
   }
 
