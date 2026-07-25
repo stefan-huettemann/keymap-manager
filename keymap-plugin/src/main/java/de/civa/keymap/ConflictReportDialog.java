@@ -1505,9 +1505,8 @@ public final class ConflictReportDialog extends DialogWrapper {
     SwingUtilities.invokeLater(() -> detailScroll.getVerticalScrollBar().setValue(0));
   }
 
-  /** A category's detail: heading + full blurb, the category-level links, then the category's contents
-   *  listed in the pane (comfort — see everything without expanding the tree; a row's name selects it).
-   *  Links: <b>Inherited Shortcuts</b> gets only <b>Settings…</b>; every other category also gets bulk
+  /** A category's detail: heading + full blurb, then the category-level links.
+   *  <b>Inherited Shortcuts</b> gets only <b>Settings…</b>; every other category also gets bulk
    *  <b>Remove…</b> / <b>Revert…</b> over all its actions (deselectable in the confirm dialog). */
   private void buildSectionDetail(String title) {
     addHtml("<h3 style='margin:0 0 4px 0'>" + escape(title) + "</h3>"
@@ -1525,12 +1524,6 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
     row.add(settingsLink());
     addBlock(row);
-
-    JComponent listing = sectionListing(title);
-    if (listing != null) {
-      addBlock(boldLabel("Contents"));
-      addBlock(listing);
-    }
   }
 
   /** All action ids in a category (used by its bulk Remove/Revert links). */
@@ -1552,92 +1545,6 @@ public final class ConflictReportDialog extends DialogWrapper {
       for (ConflictScan.ModifiedBinding m : scan.inherited) ids.add(m.action().id());
     }
     return new ArrayList<>(ids);
-  }
-
-  /** The category's items rendered as a scrollable list in the details pane; each row's name is a link
-   *  that selects that item in the navigator. Null when the category is empty. */
-  private @Nullable JComponent sectionListing(String title) {
-    WidthTrackingList list = new WidthTrackingList();   // fills the viewport so keycaps right-align to the edge
-    int count = 0;
-    if (title.equals(SEC_KEYMAP) || title.equals(SEC_IDEA_IGNORED)) {
-      boolean ignored = title.equals(SEC_IDEA_IGNORED);
-      for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
-        if (ideaIgnored(c) != ignored) continue;
-        Object payload = ignored ? new IdeaIgnoredItem(c) : new KeymapItem(c);
-        list.add(detailListRow(actionsLabel(c.actions()), null, Keycaps.forKeystroke(c.stroke(), null), payload));
-        count++;
-      }
-      if (ignored) {
-        for (ConflictAdvice.Supplement s : activeSupplements()) {
-          list.add(detailListRow(s.macSide(), null, null, s));
-          count++;
-        }
-      }
-    }
-    else if (title.equals(SEC_DOUBLE)) {
-      for (ConflictScan.InternalConflict c : scan.internal) {
-        list.add(detailListRow(actionsLabel(c.actions()), null, Keycaps.forShortcut(c.shortcut()), c));
-        count++;
-      }
-    }
-    else if (title.equals(SEC_MODIFIED)) {
-      for (ConflictScan.ModifiedBinding m : scan.modified) {
-        JComponent caps = m.shortcuts().isEmpty() ? grayText("(removed)") : Keycaps.forShortcuts(m.shortcuts(), null);
-        list.add(detailListRow(m.action().label(), actionMeta(m.action().id()), caps, new ModifiedItem(m)));
-        count++;
-      }
-    }
-    else if (title.equals(SEC_INHERITED)) {
-      for (ConflictScan.ModifiedBinding m : scan.inherited) {
-        list.add(detailListRow(m.action().label(), actionMeta(m.action().id()),
-          Keycaps.forShortcuts(m.shortcuts(), null), new InheritedItem(m)));
-        count++;
-      }
-    }
-    return count == 0 ? null : cappedScroll(list);
-  }
-
-  /** One row of a section's contents listing: the name as a link that selects the item in the navigator,
-   *  the dimmed id/keymap meta, then the shortcut keycaps <b>right-aligned</b> (X-axis box + glue). */
-  private JComponent detailListRow(String label, @Nullable String meta, @Nullable JComponent caps, Object payload) {
-    JPanel p = new JPanel();
-    p.setLayout(new BoxLayout(p, BoxLayout.X_AXIS));
-    p.setOpaque(false);
-    p.setAlignmentX(Component.LEFT_ALIGNMENT);
-    ActionLink link = new ActionLink(label, (ActionListener) e -> selectPayloadInTree(payload));
-    link.setAlignmentY(Component.CENTER_ALIGNMENT);
-    p.add(link);
-    if (meta != null) {
-      JBLabel m = grayText(meta);
-      m.setBorder(JBUI.Borders.emptyLeft(4));
-      p.add(m);
-    }
-    p.add(Box.createHorizontalGlue());
-    if (caps != null) {
-      caps.setAlignmentY(Component.CENTER_ALIGNMENT);
-      p.add(caps);
-    }
-    return p;
-  }
-
-  /** Select the tree node carrying {@code payload} (records compare by value), expanding its section and
-   *  scrolling it into view; the selection listener then renders its detail. */
-  private void selectPayloadInTree(Object payload) {
-    DefaultMutableTreeNode node = findNode((DefaultMutableTreeNode) tree.getModel().getRoot(), payload);
-    if (node == null) return;
-    TreePath path = new TreePath(node.getPath());
-    if (path.getParentPath() != null) tree.expandPath(path.getParentPath());
-    tree.setSelectionPath(path);
-    tree.scrollPathToVisible(path);
-  }
-
-  private static @Nullable DefaultMutableTreeNode findNode(DefaultMutableTreeNode node, Object payload) {
-    if (payload.equals(node.getUserObject())) return node;
-    for (int i = 0; i < node.getChildCount(); i++) {
-      DefaultMutableTreeNode found = findNode((DefaultMutableTreeNode) node.getChildAt(i), payload);
-      if (found != null) return found;
-    }
-    return null;
   }
 
   /** The label for a set of actions: the first action's name plus a "+N" count when there are more. */

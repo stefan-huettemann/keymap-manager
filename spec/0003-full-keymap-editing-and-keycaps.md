@@ -82,13 +82,14 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
   explanation above the action rows).
 - Secondary info (counts, source tags, keycaps) is **right-aligned** with a right
   margin, via a custom full-width tree renderer.
-- Clicking a category Title shows its info in the details pane, its links, **and
-  the category's contents listed in the pane** (each row selects that item — a
-  comfort so the tree needn't be expanded). Category links (revised 2026-07-24
-  after an initial "Settings-only" pass): **Inherited Shortcuts** gets only
-  **Settings…**; every other category also gets bulk **Remove…** (clears all
-  shortcuts of all its actions) and **Revert…**, deselectable in the confirm
-  dialog. Inherited stays Settings-only because Revert-on-inherited is inert.
+- Clicking a category Title shows its info and links in the details pane.
+  (A "contents listed in the pane" comfort view was added 2026-07-24 then
+  **reverted 2026-07-25** at the user's request — the links stayed.) Category
+  links (revised 2026-07-24 after an initial "Settings-only" pass): **Inherited
+  Shortcuts** gets only **Settings…**; every other category also gets bulk
+  **Remove…** (clears all shortcuts of all its actions) and **Revert…**,
+  deselectable in the confirm dialog. Inherited stays Settings-only because
+  Revert-on-inherited is inert.
 
 **Dialogs (Rebind / Remove / Revert)**
 - **Rebind** unchanged (already has a "Current:" row).
