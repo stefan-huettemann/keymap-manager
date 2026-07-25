@@ -29,7 +29,7 @@ It complements the other docs, it does not replace them:
 |---|-------|--------|--------|
 | [0001](0001-modified-shortcuts-filter.md) | Filter / view for modified shortcuts | [IJPL-228176](https://youtrack.jetbrains.com/issue/IJPL-228176) | Implemented |
 | [0002](0002-plugin-scope-and-name.md) | Plugin scope and name | internal (triggered by 0001) | Accepted (§2 editing rudder superseded by 0003) |
-| [0003](0003-full-keymap-editing-and-keycaps.md) | Full keymap editing, inherited shortcuts, keycaps | internal (`wip/changes.md`) | Accepted |
+| [0003](0003-full-keymap-editing-and-keycaps.md) | Full keymap editing, inherited shortcuts, keycaps | internal (`../wip/TODO.md`) | Accepted |
 
 ## Backlog
 

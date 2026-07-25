@@ -1,7 +1,7 @@
 # 0003 — Full keymap editing, inherited shortcuts, keycap rendering
 
 - **Status:** Accepted 2026-07-24 (supersedes the [0002](0002-plugin-scope-and-name.md) §2 "not a general tree editor" rudder)
-- **Source:** internal (`wip/changes.md`, user-authored)
+- **Source:** internal (`../wip/TODO.md`, user-authored)
 - **Date:** 2026-07-24
 
 ---
@@ -15,7 +15,7 @@ report showed only **conflicts**, **double-bound keys** and the keymap's **own
 declarations** (Modified). Actions bound purely through inheritance were visible
 only where they happened to conflict.
 
-`wip/changes.md` asks to go further: let the user **rebind / remove / revert any
+`../wip/TODO.md` asks to go further: let the user **rebind / remove / revert any
 shortcut** the keymap actually has — including inherited ones — plus a set of
 UI-consistency changes (keycap-framed shortcuts, dialog layout, navigator
 polish). The user's framing: *"we now allow changing every keybinding just like
@@ -39,7 +39,7 @@ The **other** 0002 rudders survive and still bound the scope:
 So the line moves from *"conflicts + own declarations"* to *"every **bound**
 shortcut, fully editable"* — but not to *"every action, bound or not."*
 
-## 3. Scope of changes (from `wip/changes.md`)
+## 3. Scope of changes (from `../wip/TODO.md`)
 
 **Wording (docs only):** *navigator* = the left tree; *details* = the right pane.
 
@@ -48,11 +48,13 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
   matching Settings → Keymap (per user screenshot). Applied everywhere a shortcut
   shows: navigator tree cells, detail pane, dialogs. The frame always uses the
   "highlight" style (drawn in the glyph colour) — there is no dimmer variant.
-- Gear toggles **Show Action IDs** and **Show Keymap** append the action id
-  and/or the keymap that defines the binding (nearest declaring ancestor),
-  **dimmed, comma-separated, no parentheses**, next to the name in **every**
-  surface — navigator, detail pane, conflict action list, section-contents
-  listing, confirm-dialog lists.
+- Gear toggles **Show Action IDs** and **Show Keymap** append, **dimmed**, next
+  to the name in **every** surface — navigator (incl. conflict/double-bound/
+  overlap rows), detail pane, conflict action list, section-contents listing,
+  confirm-dialog lists. Format (revised 2026-07-25): the defining keymap first in
+  parentheses, the id in brackets after — `(Keymap [id])` / `(Keymap)` / `[id]`.
+- The scan-invisible **Supplement** entries show for **any** keymap that binds
+  their action (not just the bundled one); the `ownKeymap` flag was removed.
 - Shortcut keycaps are **right-aligned** in every list (tree, section listing,
   confirm dialogs) and every row is **vertically centred** (BoxLayout.X + glue).
 - The **Remove** confirm dialog shows every shortcut assigned to each action (not

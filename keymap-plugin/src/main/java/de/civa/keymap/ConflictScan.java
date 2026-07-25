@@ -41,9 +41,7 @@ import java.util.Set;
  * whole effective binding set (its own declarations plus everything inherited from parents), since
  * all of it is editable here (a read-only keymap is copied first). Each conflict keeps the source
  * of its actions ({@link ActionRef#source}) so bindings coming from another plugin or the IDE core
- * can be labelled. {@link #ownKeymap} is true only when the selected keymap <em>is</em> the keymap
- * this plugin bundles or a copy derived from it (matched along the parent chain); it gates the
- * curated, keymap-specific extras in {@link ConflictAdvice#SUPPLEMENT}.</p>
+ * can be labelled.</p>
  *
  * <p><b>Internal</b> conflicts ({@link #internal}) are identical shortcuts carrying more than one
  * distinct action inside the keymap. They mirror IntelliJ's own {@link Keymap#getConflicts} check —
@@ -52,9 +50,6 @@ import java.util.Set;
  */
 final class ConflictScan {
   private static final Logger LOG = Logger.getInstance(ConflictScan.class);
-  /** The keymap this plugin bundles; the selected keymap counts as "ours" if it or a parent is it. */
-  private static final String OWN_KEYMAP_NAME = "MacBook Pro DE";
-
   /** One macOS system shortcut as reported by the JetBrains Runtime. */
   record SystemShortcut(@Nullable String id, @Nullable String description) {
     String label() {
@@ -84,8 +79,6 @@ final class ConflictScan {
   record ModifiedBinding(ActionRef action, List<Shortcut> shortcuts) {}
 
   final boolean jbrApiAvailable;
-  /** True only for the keymap this plugin bundles or a copy of it — gates the curated extras. */
-  final boolean ownKeymap;
   final List<ExternalConflict> keymapConflicts;
   final List<InternalConflict> internal;
   /** Bindings this keymap declares itself (its diff against the parent). */
@@ -93,11 +86,10 @@ final class ConflictScan {
   /** Effective bindings inherited from parent keymaps: shortcut-bearing, not declared here (spec 0003). */
   final List<ModifiedBinding> inherited;
 
-  private ConflictScan(boolean jbrApiAvailable, boolean ownKeymap, List<ExternalConflict> keymapConflicts,
+  private ConflictScan(boolean jbrApiAvailable, List<ExternalConflict> keymapConflicts,
                        List<InternalConflict> internal, List<ModifiedBinding> modified,
                        List<ModifiedBinding> inherited) {
     this.jbrApiAvailable = jbrApiAvailable;
-    this.ownKeymap = ownKeymap;
     this.keymapConflicts = keymapConflicts;
     this.internal = internal;
     this.modified = modified;
@@ -147,7 +139,7 @@ final class ConflictScan {
     List<ModifiedBinding> modified = modifiedBindings(keymap);
     Set<String> ownIds = new HashSet<>();
     for (ModifiedBinding m : modified) ownIds.add(m.action().id());
-    return new ConflictScan(system != null, isOurKeymap(keymap),
+    return new ConflictScan(system != null,
       List.copyOf(keymapConflicts), List.copyOf(internal),
       List.copyOf(modified), List.copyOf(inheritedBindings(keymap, ownIds)));
   }
@@ -155,14 +147,6 @@ final class ConflictScan {
   private static Comparator<ExternalConflict> externalOrder() {
     return Comparator.comparingInt((ExternalConflict c) -> c.advice().category().ordinal())
       .thenComparing(c -> KeymapUtil.getKeystrokeText(c.stroke()));
-  }
-
-  /** True when the selected keymap, or any keymap up its parent chain, is the bundled one. */
-  private static boolean isOurKeymap(Keymap keymap) {
-    for (Keymap k = keymap; k != null; k = k.getParent()) {
-      if (OWN_KEYMAP_NAME.equals(k.getName())) return true;
-    }
-    return false;
   }
 
   private static List<ActionRef> refs(List<String> ids) {

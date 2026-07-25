@@ -675,7 +675,7 @@ public final class ConflictReportDialog extends DialogWrapper {
 
       // "Overlaps IntelliJ doesn't flag": window-switch overlaps IntelliJ gets first, plus the curated
       // SUPPLEMENT notes (macOS features the live scan can't see) — all keep working, shown for completeness.
-      List<ConflictAdvice.Supplement> supplements = scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.of();
+      List<ConflictAdvice.Supplement> supplements = activeSupplements();
       if (!ignored.isEmpty() || !supplements.isEmpty()) {
         DefaultMutableTreeNode node = section(SEC_IDEA_IGNORED, ignored.size() + supplements.size());
         for (ConflictScan.ExternalConflict c : ignored) node.add(new DefaultMutableTreeNode(new IdeaIgnoredItem(c)));
@@ -709,6 +709,16 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
 
     return root;
+  }
+
+  /** The curated {@link ConflictAdvice#SUPPLEMENT} entries that apply to the <b>selected</b> keymap:
+   *  those whose IDE action is actually bound here. (Was gated on {@code ownKeymap}, which is why the
+   *  "Overlaps…" section showed only for the bundled keymap; keying it to the binding shows it wherever
+   *  the action exists — e.g. any keymap that binds {@code RunAnything} to double-⌃.) */
+  private List<ConflictAdvice.Supplement> activeSupplements() {
+    return ConflictAdvice.SUPPLEMENT.stream()
+      .filter(s -> s.actionId() != null && keymap.getShortcuts(s.actionId()).length > 0)
+      .toList();
   }
 
   /** A section node whose first child is its subtitle info-row (the explanation shown above the list
@@ -1547,10 +1557,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   /** The category's items rendered as a scrollable list in the details pane; each row's name is a link
    *  that selects that item in the navigator. Null when the category is empty. */
   private @Nullable JComponent sectionListing(String title) {
-    JPanel list = new JPanel();
-    list.setLayout(new BoxLayout(list, BoxLayout.Y_AXIS));
-    list.setOpaque(false);
-    list.setAlignmentX(Component.LEFT_ALIGNMENT);
+    WidthTrackingList list = new WidthTrackingList();   // fills the viewport so keycaps right-align to the edge
     int count = 0;
     if (title.equals(SEC_KEYMAP) || title.equals(SEC_IDEA_IGNORED)) {
       boolean ignored = title.equals(SEC_IDEA_IGNORED);
@@ -1561,7 +1568,7 @@ public final class ConflictReportDialog extends DialogWrapper {
         count++;
       }
       if (ignored) {
-        for (ConflictAdvice.Supplement s : (scan.ownKeymap ? ConflictAdvice.SUPPLEMENT : List.<ConflictAdvice.Supplement>of())) {
+        for (ConflictAdvice.Supplement s : activeSupplements()) {
           list.add(detailListRow(s.macSide(), null, null, s));
           count++;
         }
@@ -1637,6 +1644,17 @@ public final class ConflictReportDialog extends DialogWrapper {
   private static String actionsLabel(List<ConflictScan.ActionRef> a) {
     if (a.isEmpty()) return "";
     return a.get(0).label() + (a.size() > 1 ? "  +" + (a.size() - 1) : "");
+  }
+
+  /** The dimmed meta for a conflict/double-bound navigator row: the first action's id/keymap meta when a
+   *  gear toggle is on (matching the first-action name in {@link #actionsLabel}); otherwise the notable
+   *  binding source. Per-action detail (the Actions list) still shows the meta for every action. */
+  private @Nullable String conflictMeta(List<ConflictScan.ActionRef> a) {
+    if (!a.isEmpty()) {
+      String meta = actionMeta(a.get(0).id());
+      if (meta != null) return meta;
+    }
+    return notableSources(a);
   }
 
   /** A conflict on one keystroke: facts and status on top, the interactive action list and its fix
@@ -1758,7 +1776,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   }
 
   /** Action name as HTML, with the "Show Action IDs" / "Show Keymap" meta appended in the dimmed id
-   *  colour (no parentheses, comma-separated) when either toggle is on. */
+   *  colour when either toggle is on. */
   private String actionLabelHtml(ConflictScan.ActionRef a) {
     String s = escape(a.label());
     String meta = actionMeta(a.id());
@@ -1766,25 +1784,29 @@ public final class ConflictReportDialog extends DialogWrapper {
     return s;
   }
 
-  /** The comma-separated meta shown next to an action name per the gear toggles: the action id (Show
-   *  Action IDs) and/or the keymap that defines its current binding (Show Keymap). Null when both off. */
+  /** The meta shown next to an action name per the gear toggles. Format (spec 0003): the defining
+   *  <b>keymap</b> first, in parentheses; the action <b>id</b>, if also shown, in brackets after it —
+   *  {@code (Keymap [id])}, {@code (Keymap)}, or {@code [id]}. Null when neither toggle applies. */
   private @Nullable String actionMeta(String id) {
-    List<String> parts = new ArrayList<>(2);
-    if (showActionIds) parts.add(id);
-    if (showKeymap) {
-      String km = definingKeymapName(id);
-      if (km != null) parts.add(km);
-    }
-    return parts.isEmpty() ? null : String.join(", ", parts);
+    String km = showKeymap ? definingKeymapName(id) : null;
+    String aid = showActionIds ? id : null;
+    if (km != null) return aid != null ? "(" + km + " [" + aid + "])" : "(" + km + ")";
+    return aid != null ? "[" + aid + "]" : null;
   }
 
-  /** The keymap that actually declares this action's current binding: the nearest keymap up the parent
-   *  chain (from the selected one) whose own declarations include the id. Null if none declares it. */
+  /** The keymap that defines this action's current binding: the nearest keymap up the parent chain
+   *  (from the selected one) that <b>declares</b> the id in its own scheme; failing that (e.g. a binding
+   *  contributed by a plugin's default keymap, present in no scheme), the topmost keymap in the chain
+   *  that still provides the binding. Null only when nothing in the chain binds it. */
   private @Nullable String definingKeymapName(String id) {
     for (Keymap k = keymap; k != null; k = k.getParent()) {
       if (ownIds(k).contains(id)) return k.getPresentableName();
     }
-    return null;
+    Keymap base = null;   // fallback: the base keymap that supplies a plugin/built-in default
+    for (Keymap k = keymap; k != null; k = k.getParent()) {
+      if (k.getShortcuts(id).length > 0) base = k;
+    }
+    return base != null ? base.getPresentableName() : null;
   }
 
   /** A keymap's own declared action ids (from {@link KeymapImpl#writeScheme}), cached; the cache is
@@ -2105,17 +2127,14 @@ public final class ConflictReportDialog extends DialogWrapper {
    *  all ticked initially, showing {@code name (id, keymap)  [all current shortcuts]} — and, when
    *  {@code showTarget}, {@code → [reverts-to]} (the parent binding via {@link #revertTarget}; "unbound"
    *  when the parent binds nothing). The {@code (id, keymap)} meta honours the gear toggles. */
-  private final class EditActionList extends JPanel {
+  private final class EditActionList extends WidthTrackingList {
     private final List<String> ids;
     private final List<JCheckBox> boxes = new ArrayList<>();
     private Runnable onChange;
 
     EditActionList(java.util.Collection<String> actionIds, boolean showTarget) {
       this.ids = actionIds.stream().sorted().toList();
-      setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
-      setOpaque(false);
-      setBorder(JBUI.Borders.empty(4, 6, 0, 0));
-      setAlignmentX(Component.LEFT_ALIGNMENT);
+      setBorder(JBUI.Borders.empty(4, 6, 0, 0));   // layout/opaque/alignment come from WidthTrackingList
       for (String id : ids) add(row(id, showTarget));
     }
 
@@ -2131,7 +2150,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       cb.addItemListener(e -> { if (onChange != null) onChange.run(); });
       boxes.add(cb);
       p.add(cb);
-      String meta = actionMeta(id);   // id / defining keymap, dimmed, no parentheses
+      String meta = actionMeta(id);   // dimmed keymap/id meta (see actionMeta)
       if (meta != null) {
         JBLabel m = grayText(meta);
         m.setBorder(JBUI.Borders.emptyLeft(4));
@@ -2333,6 +2352,22 @@ public final class ConflictReportDialog extends DialogWrapper {
     @Override public boolean getScrollableTracksViewportHeight() { return false; }
   }
 
+  /** A vertical (BoxLayout.Y) list that <b>fills the scroll viewport's width</b>, so rows built with a
+   *  trailing horizontal glue right-align their keycaps to the true right edge — not to the widest row.
+   *  Used for the section-contents listing and the dialog pick lists. */
+  private static class WidthTrackingList extends JPanel implements Scrollable {
+    WidthTrackingList() {
+      setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
+      setOpaque(false);
+      setAlignmentX(Component.LEFT_ALIGNMENT);
+    }
+    @Override public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+    @Override public int getScrollableUnitIncrement(Rectangle r, int orientation, int direction) { return JBUI.scale(16); }
+    @Override public int getScrollableBlockIncrement(Rectangle r, int orientation, int direction) { return r.height; }
+    @Override public boolean getScrollableTracksViewportWidth() { return true; }
+    @Override public boolean getScrollableTracksViewportHeight() { return false; }
+  }
+
   // ---- interactive action list ----------------------------------------------------------------
 
   /**
@@ -2374,7 +2409,7 @@ public final class ConflictReportDialog extends DialogWrapper {
         checks.add(cb);
         r.add(cb);
         r.add(actionLabel(a));
-        String meta = actionMeta(a.id());   // id / defining keymap, dimmed, no parentheses
+        String meta = actionMeta(a.id());   // dimmed keymap/id meta (see actionMeta)
         if (meta != null) {
           JBLabel m = new JBLabel(meta);
           m.setForeground(grayColour());
@@ -2484,18 +2519,19 @@ public final class ConflictReportDialog extends DialogWrapper {
       else if (p instanceof KeymapItem ki) {
         ConflictScan.ExternalConflict c = ki.c();
         icon = needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information;
-        name = actionsLabel(c.actions()); metaRight = notableSources(c.actions()); caps = Keycaps.forKeystroke(c.stroke(), fg);
+        name = actionsLabel(c.actions()); metaRight = conflictMeta(c.actions()); caps = Keycaps.forKeystroke(c.stroke(), fg);
       }
       else if (p instanceof IdeaIgnoredItem ii) {
         ConflictScan.ExternalConflict c = ii.c();
         icon = needsAttention(c) ? AllIcons.General.Warning : AllIcons.General.Information;
-        name = actionsLabel(c.actions()); metaRight = notableSources(c.actions()); caps = Keycaps.forKeystroke(c.stroke(), fg);
+        name = actionsLabel(c.actions()); metaRight = conflictMeta(c.actions()); caps = Keycaps.forKeystroke(c.stroke(), fg);
       }
       else if (p instanceof ConflictAdvice.Supplement s) {
         icon = AllIcons.General.Information; name = s.macSide(); metaRight = s.keys();
       }
       else if (p instanceof ConflictScan.InternalConflict c) {
-        icon = AllIcons.General.Information; name = actionsLabel(c.actions()); caps = Keycaps.forShortcuts(List.of(c.shortcut()), fg);
+        icon = AllIcons.General.Information; name = actionsLabel(c.actions()); metaRight = conflictMeta(c.actions());
+        caps = Keycaps.forShortcuts(List.of(c.shortcut()), fg);
       }
       else if (p instanceof ModifiedItem mi) {
         icon = AllIcons.General.Information; name = mi.m().action().label(); metaRight = actionMeta(mi.m().action().id());
