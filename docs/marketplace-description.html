@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Keymap Manager — Marketplace description (preview only)</title>
+</head>
+<body>
+<!--
+  JetBrains Marketplace listing copy for Keymap Manager. Paste only the content between the
+  PASTE START/END markers below into the Marketplace "Description" field when publishing or updating
+  the listing (plugins.jetbrains.com — Marketplace's description is edited independently of plugin.xml
+  after the first upload). Uses the same safe-HTML subset as plugin.xml's <description>: b, i, code,
+  ul/ol/li, a, h1-h6, hr, br.
+
+  The surrounding <html>/<head>/<meta charset> exists only so this file previews correctly when
+  opened directly in a browser (a bare fragment has no charset for the browser to sniff, which is
+  why em dashes etc. showed up as "â€”") — it is not part of what you paste.
+
+  This is marketing copy for prospective users deciding whether to install — for the in-IDE help text
+  (purpose + usage, shown in Settings -> Plugins), see keymap-plugin/src/main/resources/META-INF/plugin.xml.
+-->
+<!-- PASTE START -->
+<h3>Stop losing shortcuts to macOS</h3>
+Every JetBrains IDE ships shortcuts that macOS quietly claims for itself —
+Spotlight, Mission Control, window snapping, screenshots, and more. Some
+still reach the IDE; some never fire at all, and you won't know which is
+which until it bites you mid-flow. <b>Keymap Manager</b> finds every one of
+them on <b>any</b> keymap you have installed, explains exactly what's
+happening, and lets you fix it without leaving the IDE.
+<br/><br/>
+Open it from <b>Tools &rarr; Keymap Manager…</b> or Find Action.
+
+<h3>What it does</h3>
+<ul>
+  <li><b>Find conflicts</b> — a live, grouped report of every shortcut that
+      clashes with a <b>macOS system shortcut</b> (read from the JetBrains
+      Runtime's live system-shortcut table, the same source as the IDE's own
+      conflict banner), plus <b>double-bound keys</b> (one keystroke on
+      several actions) and a separate section for macOS overlaps the IDE
+      doesn't flag. Each conflict is explained — whether your IDE still wins
+      the key or macOS takes it first — with tailored advice.</li>
+  <li><b>Fix it in place</b> — <b>rebind</b>, <b>remove</b>, or <b>revert</b>
+      to the parent keymap's binding, for one action, several at once, or a
+      whole category. Works on the keymap's own bindings <i>and</i> on the
+      ones it inherits; a read-only keymap gets an editable copy
+      automatically. The rebind field captures a real keypress — even
+      IDE-bound combos like ⌃X — offers the keys you can't press into a
+      field (↩ ⎋ ⌫ ⇥ Space), supports German keys (Ä Ö Ü ß), flags macOS
+      overlaps and existing bindings as you type, and can <b>suggest</b> a
+      free (or least-conflicting) shortcut for you.</li>
+  <li><b>Review what changed</b> — <b>Modified shortcuts</b> shows what a
+      keymap declares itself (its diff against the parent); <b>Inherited
+      shortcuts</b> shows what it takes from the parent unchanged. Narrow the
+      report to just the modified ones, or show each action's <b>id</b> and
+      the <b>keymap that defines</b> its binding.</li>
+  <li><b>Manage keymaps</b> — pick any installed keymap, then
+      <b>activate</b>, <b>duplicate</b>, <b>rename</b>, or <b>delete</b> it.</li>
+  <li><b>Import / export</b> keymaps as XML — the whole inheritance chain, or
+      just the categories you want (conflicts, overlaps, double-bound keys,
+      or your own changes versus the parent).</li>
+</ul>
+Shortcuts render as <b>keycaps</b> everywhere, matching Settings → Keymap.
+(Giving a shortcut to an action that has <b>none</b> is still a Settings →
+Keymap job — every category links straight there, landing on the action you
+were looking at.)
+
+<h3>Bonus: a keymap for German MacBook Pro keyboards</h3>
+On a German (T1) layout, dozens of stock IntelliJ shortcuts are physically
+unpressable — <code>/ = ; ' ` [ ]</code> only exist behind a Shift/Option
+chord, and there's no numpad or Insert key. The bundled <b>MacBook Pro DE</b>
+keymap is rebuilt around all of that, ready to select under
+<b>Settings &rarr; Keymap</b> — no rebinding required to get started.
+
+<hr/>
+<b>macOS-focused.</b> Report wording adapts to the host IDE (IntelliJ IDEA,
+PyCharm, GoLand, Android Studio, …).
+<br/><br/>
+<b>Source code:</b> <a href="https://github.com/stefan-huettemann/keymap-manager">github.com/stefan-huettemann/keymap-manager</a>
+<!-- PASTE END -->
+</body>
+</html>

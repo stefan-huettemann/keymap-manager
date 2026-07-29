@@ -4,38 +4,36 @@
   <vendor email="stefan.huettemann@civa.de" url="https://civa.de">CIVA</vendor>
 
   <description><![CDATA[
-    <b>Manage your JetBrains keymaps and resolve keyboard-shortcut conflicts</b>
-    on macOS. Open it from <b>Tools &rarr; Keymap Manager…</b> or Find Action.
+    <b>Keymap Manager</b> finds keyboard shortcuts in your JetBrains keymap that
+    clash — with a macOS system shortcut, or with each other — and lets you fix
+    them in place, without leaving the IDE.
+
+    <h3>Usage</h3>
+    <ol>
+      <li>Open it from <b>Tools &rarr; Keymap Manager…</b> or Find Action.</li>
+      <li>Pick the keymap to inspect from the selector at the top; it defaults
+          to your active one.</li>
+      <li>Work through the report: <b>Keymap conflicts</b> and <b>Overlaps the
+          IDE doesn't already flag</b> (macOS takes the key), <b>Double-bound
+          keys</b> (one key, several actions), <b>Modified shortcuts</b> (this
+          keymap's own changes), and <b>Inherited Shortcuts</b> (taken from the
+          parent as-is). Click any row for the full explanation.</li>
+      <li>On a binding: <b>Rebind…</b> (press the new key, or click
+          <b>Suggest…</b> for a free one), <b>Remove…</b>, <b>Revert…</b> to the
+          parent's binding, or <b>Settings…</b> to jump to the platform Keymap
+          page.</li>
+      <li>Use the gear menu (⚙) next to the keymap selector to <b>Export…</b> /
+          <b>Import…</b> keymaps as XML, or to <b>Duplicate</b>, <b>Rename</b>,
+          or <b>Delete</b> an editable one.</li>
+      <li><b>Show modified only</b>, <b>Show Action IDs</b>, and <b>Show
+          Keymap</b>, below the report, narrow or annotate what's shown.</li>
+    </ol>
+
+    On a German (T1) MacBook Pro keyboard, select the bundled <b>MacBook Pro
+    DE</b> keymap under <b>Settings &rarr; Keymap</b> to start from bindings
+    that are actually reachable on that layout.
     <br/><br/>
-    <b>What it does</b>
-    <ul>
-      <li><b>Find conflicts</b> — a live, grouped report of every shortcut that
-          clashes with a <b>macOS system shortcut</b> (read from the JetBrains
-          Runtime's live system-shortcut table, the same source as the IDE's own
-          conflict banner), plus <b>double-bound keys</b> (one keystroke on
-          several actions) and a separate section for macOS overlaps the IDE
-          doesn't flag. Each conflict is explained — whether your IDE still wins
-          the key or macOS takes it first — with tailored advice.</li>
-      <li><b>Fix in place</b> — <b>rebind</b> or <b>remove</b> a shortcut straight
-          from the report. The rebind field captures a real keypress (even
-          IDE-bound combos) and supports German keys (Ä Ö Ü ß), with a live
-          green/red check for macOS overlaps and existing bindings.</li>
-      <li><b>Manage keymaps</b> — pick any installed keymap, then
-          <b>activate</b>, <b>duplicate</b>, <b>rename</b> or <b>delete</b> it.</li>
-      <li><b>Import / export</b> keymaps as XML — the whole inheritance chain, or
-          selected categories (conflicts, overlaps, double-bound keys, or just
-          your changes versus the parent keymap).</li>
-    </ul>
-    <b>Bundled keymap</b> — includes <b>MacBook Pro DE</b>, a macOS keymap tuned
-    for MacBook Pro keyboards with the German (T1) layout, avoiding shortcuts that
-    are physically unpressable there (keys like <code>/ = ; ' ` [ ]</code> are
-    only Shift/Option chords, and there is no numpad or Insert key). Select it
-    under <b>Settings &rarr; Keymap</b>.
-    <br/><br/>
-    <b>macOS-focused.</b> Report wording adapts to the host IDE (IntelliJ IDEA,
-    PyCharm, GoLand, Android Studio, …).
-    <br/><br/>
-    <b>Source code:</b> <a href="https://github.com/stefan-huettemann/keymap-manager">github.com/stefan-huettemann/keymap-manager</a>
+    <b>macOS only.</b> Source: <a href="https://github.com/stefan-huettemann/keymap-manager">github.com/stefan-huettemann/keymap-manager</a>
   ]]></description>
 
   <change-notes><![CDATA[

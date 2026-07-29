@@ -6,8 +6,12 @@ How to register and release **Keymap Manager** (`de.civa.plugins.keymapmanager`)
 ## What's already set up
 
 - **Metadata** in `src/main/resources/META-INF/plugin.xml`: unique `<id>`, `<name>`, `<vendor>` (email + url),
-  a meaningful English `<description>`, `<change-notes>`, and `<idea-version since-build="261">` (no
-  `until-build`, so it stays compatible with future IDEs).
+  an in-IDE `<description>` (purpose + usage, shown in Settings → Plugins — not marketing copy),
+  `<change-notes>`, and `<idea-version since-build="261">` (no `until-build`, so it stays compatible with
+  future IDEs).
+- **Marketplace listing copy** in [`docs/marketplace-description.html`](docs/marketplace-description.html) —
+  paste this into the Marketplace listing's Description field (edited independently of plugin.xml after the
+  first upload); it's the "why install this" pitch, not the in-IDE help text.
 - **Icon**: `pluginIcon.svg` + `pluginIcon_dark.svg` in `META-INF/`.
 - **Gradle publishing**: `publishPlugin` reads a Marketplace token from `PUBLISH_TOKEN`; optional author
   signing (`signPlugin`) activates only when the signing env vars are present.
@@ -44,6 +48,9 @@ with `publishPlugin`.
    *User Interface* or *Tools Integration* — editable later).
 4. Submit. Marketplace runs its automated Plugin Verifier and a reviewer checks the submission
    (typically ~2 business days). Once approved, the plugin page goes public.
+5. Paste [`docs/marketplace-description.html`](docs/marketplace-description.html) into the listing's
+   Description field (Marketplace → your plugin → Edit) — independent of plugin.xml, so it won't
+   happen automatically.
 
 ## Subsequent releases — automated
 
@@ -83,6 +90,7 @@ generating the key/chain.
 - [ ] `<change-notes>` updated in `plugin.xml`
 - [ ] `./gradlew buildPlugin verifyPlugin` → **Compatible**
 - [ ] First release: uploaded on the web and approved · Updates: `publishPlugin` with `PUBLISH_TOKEN`
+- [ ] `docs/marketplace-description.html` still matches reality; re-paste into the listing if it changed
 - [ ] Git tag / commit for the released version
 
 ## References

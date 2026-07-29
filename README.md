@@ -33,4 +33,5 @@ Releasing to the JetBrains Marketplace: [`PUBLISHING.md`](PUBLISHING.md)
 | `keymaps/$default.xml`, `keymaps/Mac OS X 10.5+.xml` | Platform reference keymaps, sorted for diffing |
 | `keymaps/keys.md` | Audit of all keys used, with German-layout reachability |
 | `keymaps/orig/` | Pristine platform keymap exports |
+| `docs/` | Marketplace listing copy (not the in-IDE `plugin.xml` description) |
 | `CLAUDE.md` | Guidance for Claude Code sessions in this repo |
