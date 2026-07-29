@@ -51,12 +51,28 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
 - Gear toggles **Show Action IDs** and **Show Keymap** append, **dimmed**, next
   to the name in **every** surface — navigator (incl. conflict/double-bound/
   overlap rows), detail pane, conflict action list, section-contents listing,
-  confirm-dialog lists. Format (revised 2026-07-25): the defining keymap first in
-  parentheses, the id in brackets after — `(Keymap [id])` / `(Keymap)` / `[id]`.
+  confirm-dialog lists. Format (revised 2026-07-26): the action id in parentheses,
+  the defining keymap in brackets, joined by a dash — `(id) - [Keymap]` / `(id)` /
+  `[Keymap]`.
+- The meta is **right-aligned in every list**, immediately left of the keycaps
+  (fixed 2026-07-26 — it was right-aligned in the navigator but trailed the action
+  name on the left in the confirm dialogs and the conflict action list, so the same
+  information sat on opposite sides of the window). The rule is one line of layout:
+  the row's horizontal glue goes **before** the meta, not after. `ActionListView`'s
+  rows changed from `FlowLayout` to `BoxLayout.X_AXIS` to allow it (gaps became
+  struts, a 1px border replaces the old vgap). Its rows have no keycaps — every
+  action there is on the one key named in the header — so the meta and the source
+  tag end the row. The detail pane's **Action** fact row stays inline: it is a
+  label:value line, not a list row, with no keycap column to align against.
 - The scan-invisible **Supplement** entries show for **any** keymap that binds
   their action (not just the bundled one); the `ownKeymap` flag was removed.
 - Shortcut keycaps are **right-aligned** in every list (tree, section listing,
   confirm dialogs) and every row is **vertically centred** (BoxLayout.X + glue).
+  Right-aligned means at the **panel's right edge with a small margin** — the row
+  is sized to exactly the viewport width, the name/meta ellipsize when they don't
+  fit (full text as a tooltip), and the keycaps never move (revised 2026-07-26;
+  before, an over-long row kept its natural width, so the tree scrolled sideways
+  and every row's keycaps ended somewhere else).
 - The **Remove** confirm dialog shows every shortcut assigned to each action (not
   just one) and, from a per-row/category link, clears them all.
 - The scan-invisible **Supplement** entries (Emoji & Symbols, Dictation) are no
@@ -82,6 +98,17 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
   explanation above the action rows).
 - Secondary info (counts, source tags, keycaps) is **right-aligned** with a right
   margin, via a custom full-width tree renderer.
+- **All five categories are always listed** (reworked 2026-07-26): Keymap
+  conflicts, Overlaps {ide} doesn't flag, Double-bound keys, Modified shortcuts,
+  Inherited Shortcuts. Before, "Overlaps" was dropped entirely when it had nothing
+  in it and "Double-bound keys" showed an empty section with no rows, so the
+  navigator's shape changed per keymap. Now an empty category always shows one
+  placeholder row, and selecting it explains itself in the details pane: heading,
+  one-line status, what *would* be listed there and why nothing is
+  (`emptyExplanation`), plus the category links (Settings… alone when empty). The
+  scan-unavailable case is marked `ok=false` — ⚠ icon, amber status, its own text
+  making clear the section is empty because no scan ran. "Show modified only"
+  still narrows to the Modified category; that is what the toggle is for.
 - Clicking a category Title shows its info and links in the details pane.
   (A "contents listed in the pane" comfort view was added 2026-07-24 then
   **reverted 2026-07-25** at the user's request — the links stayed.) Category
@@ -90,6 +117,16 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
   **Remove…** (clears all shortcuts of all its actions) and **Revert…**,
   deselectable in the confirm dialog. Inherited stays Settings-only because
   Revert-on-inherited is inert.
+- **Revert reaches every list** (revised 2026-07-26). It was on the Modified rows
+  only; it is now on **every** per-row detail — conflicts, overlaps, double-bound
+  keys, supplements, Modified — gated on one predicate, `revertable(id)` =
+  "the viewed keymap declares this action itself" (`ownIds`). That gate is what
+  keeps it off Inherited rows (no own declaration → `clearOwnActionsId` would be a
+  no-op), so the Inherited case needs no special-casing any more. On a conflict row
+  the link follows the same rule as its Rebind/Remove neighbours — the checked
+  actions, or all of the key's revertable ones when the checkboxes name none — and
+  the category-level bulk Revert is filtered to the revertable ids too (before, it
+  passed inherited ones that showed "current → identical" and did nothing).
 
 **Dialogs (Rebind / Remove / Revert)**
 - **Rebind** unchanged (already has a "Current:" row).
@@ -103,9 +140,75 @@ shortcut, fully editable"* — but not to *"every action, bound or not."*
   single-action revert stayed collapsed.)
 - All dialog action lists are **scrollable**, capped at ~480px so the window
   can't grow unbounded.
+- The list must sit in the centre panel's **`BorderLayout.CENTER`**, with only the
+  fixed rows `NORTH` (shared `listLayout()`, fixed 2026-07-26). All three dialogs
+  originally put the *whole* form in `NORTH`, which lays out at its preferred
+  height and never shrinks — so on a window shorter than the form (screen-clamped
+  on open, or dragged smaller) the list's bottom was cut off *outside* the scroll
+  pane and those actions could not be reached at all. Rebind surfaced it because
+  it stacks six more rows above the list than Remove/Revert. Verified: at 560px
+  the old layout left the list hanging 150px below the window; the new one shrinks
+  the viewport to 330px and scrolls.
+- **All three** dialogs carry a **Select all / Deselect all** link *above* the
+  list (added 2026-07-26 for Remove/Revert, extended to Rebind the same day), so
+  it stays visible while the list scrolls. It is the shared
+  `EditActionList.selectAllLink()` and behaves like the conflict detail's
+  `ActionListView` toggle — "Deselect all" while anything is ticked (which is how
+  these dialogs open), flipping to "Select all" once nothing is. It hides with the
+  list under "Hide actions", and Rebind/Remove omit it when only one action is in
+  play (Revert only builds a list for a bulk revert).
 
 **Cogwheel menu**
 - New trailing section with one entry, **"Settings…"**, opening Keymap settings.
+- That entry carries the link arrow **after** its text (added 2026-07-26), so all
+  three "leaves the plugin" surfaces look alike. Menu items paint their
+  `Presentation` icon in the *left* gutter, so this uses the platform's
+  `ActionUtil.SECONDARY_ICON` property instead — documented as "the icon that will
+  be placed after the text", read by `ActionMenuItem.getSecondaryIcon()` and
+  painted by `BegMenuItemUI` after the label; it is the same mechanism Git's
+  working-trees "New" badge uses. Set on the *event's* presentation during
+  `update()`, not on the template, so a clone can't drop it.
+
+**Settings icon per navigator row** (added 2026-07-26)
+- Every navigator row that names an action carries the **external-link arrow** as a
+  **rightmost column**, after the keycaps, tinted to the theme's link colour
+  (`JBUI.CurrentTheme.Link.Foreground.ENABLED` — the help "?" now uses the same
+  constant instead of its own hardcoded blue). Clicking it does exactly what that
+  row's `Settings…` link does: opens the platform Keymap page at the action.
+- Rows that name no single action (section titles, subtitles, empty placeholders)
+  reserve the column with a strut, so the keycap column stays aligned across rows.
+- The **dialog lists** (`EditActionList`, i.e. Rebind / Remove / Revert) carry the
+  same icon column, as a real `InplaceButton`. Leaving for the Keymap page there
+  means abandoning the edit being confirmed, so it **cancels the dialog** first —
+  stated in the tooltip — and defers the report close + settings open to a later
+  event so the modal loop unwinds first. Same `ROW_RIGHT_INSET` as the navigator.
+- A `TreeCellRenderer` only paints, so the click lives on the tree: `settingsIconHit`
+  derives the icon's x-range from the row bounds rather than from the (per-paint,
+  rebuilt) component tree — the cell always ends at the viewport edge and the icon
+  is laid out last inside the shared `ROW_RIGHT_INSET`. Hovering it shows a hand
+  cursor and a tooltip naming the action, since the icon has no label.
+
+**Settings… lands on the action** (added 2026-07-26)
+- Every `Settings…` link that has a single action in scope opens the platform
+  Keymap page with that action **revealed and selected**, instead of dumping the
+  user at the top of the tree:
+  `showSettingsDialog(project, KeymapPanel.class, panel -> panel.selectAction(id))`.
+  The `Consumer` overload runs before the dialog is shown, and `selectAction`
+  explicitly defers until the panel has initialized — that is its documented
+  purpose. The link carries a tooltip naming the action, since its text can't.
+- Per-row details pass their own action; a conflict/double-bound row passes the
+  key's **first** action (the one the row's label and meta already name, so the
+  tooltip matches what was on screen); the unbound-supplement case passes its
+  action so a shortcut can be assigned there; category and empty-placeholder rows
+  keep the plain link.
+- **Not possible:** presetting the page's *find-by-shortcut* filter —
+  `KeymapPanel.filterTreeByShortcut` and its filtering panel are private. Nor can
+  a keystroke be passed as the text filter: `ActionsTreeUtil.createActionFilter`
+  matches template text, description, synonyms, action **id** and abbreviations,
+  never shortcut text. The action id is the only way in.
+- Verified against the 2026.1.4 platform sources; `verifyPlugin` verdict stays
+  **Compatible** with no API warnings (`KeymapPanel` is public, un-annotated, and
+  was already referenced by the plugin).
 
 ## 4. Consequences / follow-ups
 
