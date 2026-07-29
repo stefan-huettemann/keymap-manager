@@ -414,7 +414,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     // Help button: a slightly larger, blue "?" pinned to the right of the keymap row.
     Icon helpIcon = IconUtil.scale(
       IconUtil.colorize(AllIcons.General.ContextHelp, LINK_COLOR, false, false), null, 1.3f);
-    InplaceButton help = new InplaceButton("What this plugin does", helpIcon, e -> showHelp());
+    InplaceButton help = new InplaceButton("How to use this", helpIcon, e -> showHelp());
     JPanel helpHolder = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0));
     helpHolder.add(help);
     JPanel keymapRow = new JPanel(new BorderLayout());
@@ -1005,7 +1005,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     });
   }
 
-  /** Short "what this is / isn't" explainer, shown from the help (?) button. */
+  /** Usage walkthrough, shown from the help (?) button. */
   private void showHelp() {
     new HelpDialog().show();
   }
@@ -1026,48 +1026,34 @@ public final class ConflictReportDialog extends DialogWrapper {
   private final class HelpDialog extends DialogWrapper {
     HelpDialog() {
       super(project);
-      setTitle("About Keymap Manager");
+      setTitle("How to Use Keymap Manager");
       init();
     }
 
     @Override
     protected JComponent createCenterPanel() {
       JEditorPane pane = htmlPane("<html><body style='margin:0'>"
-        + "<h3 style='margin:0 0 4px 0'>What this plugin does</h3>"
-        + "<p style='margin:0 0 8px 0'>A <b>macOS-focused keymap manager</b>. It shows you what a keymap "
-        + "really binds, where those bindings collide with macOS, and lets you change them without leaving "
-        + "the report.</p>"
-        + "<ul style='margin:0 0 12px 0'>"
-        + "<li><b>Find conflicts.</b> A live scan of the macOS system-shortcut table — the same source "
-        + "{ide} uses for its own conflict banner — says for every overlap whether {ide} still gets the "
-        + "key or macOS takes it first, with advice per case. Alongside it: <b>double-bound keys</b> (one "
-        + "keystroke on several actions) and the overlaps {ide}'s own tool doesn't flag.</li>"
-        + "<li><b>Edit any bound shortcut in place.</b> <b>Rebind</b>, <b>remove</b> or <b>revert</b> to "
-        + "the parent keymap's binding — one action, several at once, or a whole category. Works on the "
-        + "keymap's own bindings <i>and</i> on the ones it inherits; editing a read-only keymap derives an "
-        + "editable copy first. Rebinding captures a real keypress (even {ide}-bound combos like "
-        + "&#8963;X), covers keys you can't press into a field (&#8617; &#9099; &#9003; &#8677; Space), "
-        + "handles German keys (&#196; &#214; &#220; &#223;), and flags macOS overlaps and existing "
-        + "bindings as you type.</li>"
-        + "<li><b>Review what changed.</b> <b>Modified shortcuts</b> lists what this keymap declares "
-        + "itself — its diff against the parent — and <b>Inherited shortcuts</b> lists what it takes "
-        + "from the parent unchanged. The gear menu can narrow the report to just the modified ones, and "
-        + "can append each action's <b>id</b> and the <b>keymap that defines</b> its binding.</li>"
-        + "<li><b>Manage keymaps.</b> Pick any installed keymap, then activate, duplicate, rename or "
-        + "delete it, and <b>import / export</b> keymaps as XML — the whole inheritance chain, or just "
-        + "the conflicts, overlaps, double-bound keys or your changes versus the parent.</li>"
-        + "<li><b>Bundled keymap.</b> <b>MacBook Pro DE</b>, tuned for a MacBook Pro with the German "
-        + "(T1) layout, where many stock shortcuts are physically unpressable.</li>"
-        + "</ul>"
-        + "<h3 style='margin:0 0 4px 0'>Where it stops</h3>"
-        + "<p style='margin:0 0 8px 0'>It edits every shortcut a keymap <b>binds</b> — but it doesn't "
-        + "browse the complete action tree, so giving a shortcut to an action that currently has "
-        + "<b>none</b> stays a job for <b>Settings &rarr; Keymap</b>. Every category here links straight "
-        + "there, landing on the action you were looking at.</p>"
-        + "<p style='margin:0'>The macOS side is not ours to change either: when a system shortcut is the "
-        + "one in the way, free the key in <b>System Settings &rarr; Keyboard &rarr; Keyboard "
-        + "Shortcuts</b>. And the live scan needs the JetBrains Runtime — on another runtime the report "
-        + "still works, but it can't see macOS.</p>"
+        + "<h3 style='margin:0 0 4px 0'>Usage</h3>"
+        + "<ol style='margin:0 0 8px 0; padding-left:18px'>"
+        + "<li>Open it from <b>Tools &rarr; Keymap Manager…</b> or Find Action.</li>"
+        + "<li>Pick the keymap to inspect from the selector at the top; it defaults to your active "
+        + "one.</li>"
+        + "<li>Work through the report: <b>Keymap conflicts</b> and <b>Overlaps {ide} doesn't already "
+        + "flag</b> (macOS takes the key), <b>Double-bound keys</b> (one key, several actions), "
+        + "<b>Modified shortcuts</b> (this keymap's own changes), and <b>Inherited Shortcuts</b> (taken "
+        + "from the parent as-is). Click any row for the full explanation.</li>"
+        + "<li>On a binding: <b>Rebind…</b> (press the new key, or click <b>Suggest…</b> for a free "
+        + "one), <b>Remove…</b>, <b>Revert…</b> to the parent's binding, or <b>Settings…</b> to jump to "
+        + "the platform Keymap page.</li>"
+        + "<li>Use the gear menu (&#9881;) next to the keymap selector to <b>Export…</b> / "
+        + "<b>Import…</b> keymaps as XML, or to <b>Duplicate</b>, <b>Rename</b>, or <b>Delete</b> an "
+        + "editable one.</li>"
+        + "<li><b>Show modified only</b>, <b>Show Action IDs</b>, and <b>Show Keymap</b>, below the "
+        + "report, narrow or annotate what's shown.</li>"
+        + "</ol>"
+        + "<p style='margin:0'>On a German (T1) MacBook Pro keyboard, select the bundled <b>MacBook Pro "
+        + "DE</b> keymap under <b>Settings &rarr; Keymap</b> to start from bindings that are actually "
+        + "reachable on that layout.</p>"
         + "</body></html>");
       JBScrollPane scroll = new JBScrollPane(pane);
       scroll.setBorder(JBUI.Borders.empty(12));  // margin around the text pane

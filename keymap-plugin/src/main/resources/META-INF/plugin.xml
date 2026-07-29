@@ -4,9 +4,14 @@
   <vendor email="stefan.huettemann@civa.de" url="https://civa.de">CIVA</vendor>
 
   <description><![CDATA[
-    <b>Keymap Manager</b> finds keyboard shortcuts in your JetBrains keymap that
-    clash — with a macOS system shortcut, or with each other — and lets you fix
-    them in place, without leaving the IDE.
+    <b>Keymap Manager</b> — a macOS-focused keymap manager. It finds where
+    your JetBrains keymap collides with macOS or with itself, explains what's
+    actually happening, and lets you fix any bound shortcut in place: rebind,
+    remove, or revert to the parent binding — one action, several at once, or
+    a whole category, inherited bindings included. It also manages keymaps
+    (activate, duplicate, rename, delete, import/export as XML) and bundles
+    <b>MacBook Pro DE</b>, a ready-made keymap for German MacBook Pro
+    keyboards.
 
     <h3>Usage</h3>
     <ol>
