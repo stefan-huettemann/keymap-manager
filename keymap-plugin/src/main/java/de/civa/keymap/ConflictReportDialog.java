@@ -129,6 +129,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.Set;
@@ -280,6 +281,83 @@ public final class ConflictReportDialog extends DialogWrapper {
     return e.getX() >= right - SETTINGS_ICON.getIconWidth() && e.getX() <= right ? id : null;
   }
 
+  /** Right-click support: select the row under the cursor and pop up its operations, the same ones the
+   *  detail pane offers for that row — so a row never requires opening the detail pane just to act on it. */
+  private void maybeShowContextMenu(MouseEvent e) {
+    if (!e.isPopupTrigger()) return;
+    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
+    if (path == null) return;
+    tree.setSelectionPath(path);
+    DefaultActionGroup group = buildContextMenu(payloadOf(path));
+    if (group == null) return;
+    ActionManager.getInstance().createActionPopupMenu("ManageKeymapConflictsNavigator", group)
+      .getComponent().show(tree, e.getX(), e.getY());
+  }
+
+  /** The context menu for a navigator row: a real IDEA action menu, like the gear menu, mirroring the
+   *  links its detail pane shows — scoped to <b>all</b> of the row's actions since there is no
+   *  per-action checklist to narrow it, matching what each link already falls back to when nothing is
+   *  individually ticked. Null for a payload naming no action and no category (none currently exist). */
+  private @Nullable DefaultActionGroup buildContextMenu(@Nullable Object payload) {
+    DefaultActionGroup group = new DefaultActionGroup();
+    if (payload instanceof Section s) addCategoryMenuItems(group, s.title());
+    else if (payload instanceof Subtitle st) addCategoryMenuItems(group, st.sectionTitle());
+    else if (payload instanceof Empty em) addCategoryMenuItems(group, em.sectionTitle());
+    else if (payload instanceof KeymapItem ki) addKeyMenuItems(group, ki.c().stroke(), ki.c().actions());
+    else if (payload instanceof IdeaIgnoredItem ii) addKeyMenuItems(group, ii.c().stroke(), ii.c().actions());
+    else if (payload instanceof ConflictScan.InternalConflict c) {
+      addKeyMenuItems(group, ((KeyboardShortcut) c.shortcut()).getFirstKeyStroke(), c.actions());
+    }
+    else if (payload instanceof ModifiedItem mi) addActionMenuItems(group, mi.m().action(), mi.m().shortcuts());
+    else if (payload instanceof InheritedItem it) addActionMenuItems(group, it.m().action(), it.m().shortcuts());
+    else if (payload instanceof ConflictAdvice.Supplement s) {
+      List<Shortcut> scs = s.actionId() != null ? List.of(keymap.getShortcuts(s.actionId())) : List.of();
+      if (!scs.isEmpty()) addActionMenuItems(group, new ConflictScan.ActionRef(s.actionId(), null, null, null), scs);
+      else group.add(menuAction("Settings…", false, () -> openKeymapSettings(s.actionId()), SETTINGS_ICON));
+    }
+    else return null;
+    return group;
+  }
+
+  /** A category row's menu: bulk Remove…/Revert… over its actions, then Settings… (mirrors
+   *  {@link #categoryLinks}), separated the way the gear menu separates its own trailing Settings…. */
+  private void addCategoryMenuItems(DefaultActionGroup group, String title) {
+    if (!title.equals(SEC_INHERITED)) {
+      List<String> ids = categoryIds(title);
+      if (!ids.isEmpty()) {
+        group.add(menuAction("Remove…", false, () -> confirmRemove(null, ids)));
+        List<String> revertable = revertableIds(ids);
+        if (!revertable.isEmpty()) group.add(menuAction("Revert…", false, () -> confirmRevert(revertable)));
+        group.addSeparator();
+      }
+    }
+    group.add(menuAction("Settings…", false, this::openKeymapSettings, SETTINGS_ICON));
+  }
+
+  /** A key row's menu (conflict / overlap / double-bound): mirrors {@link #linksRow}, acting on every
+   *  action on the key since there is no checklist here to narrow the scope. */
+  private void addKeyMenuItems(DefaultActionGroup group, KeyStroke stroke, List<ConflictScan.ActionRef> actions) {
+    List<String> allIds = actions.stream().map(ConflictScan.ActionRef::id).toList();
+    group.add(menuAction("Rebind…", false, () -> rebindActions(stroke, allIds)));
+    group.add(menuAction("Suggest a Shortcut…", false, () -> suggestAndRebind(stroke, allIds)));
+    group.add(menuAction("Remove…", false, () -> confirmRemove(stroke, allIds)));
+    List<String> revertable = revertableIds(allIds);
+    if (!revertable.isEmpty()) group.add(menuAction("Revert…", false, () -> confirmRevert(revertable)));
+    group.addSeparator();
+    group.add(menuAction("Settings…", false,
+      () -> openKeymapSettings(allIds.isEmpty() ? null : allIds.get(0)), SETTINGS_ICON));
+  }
+
+  /** A single-action row's menu (Modified / Inherited / a bound Supplement): mirrors {@link #actionEditLinks}. */
+  private void addActionMenuItems(DefaultActionGroup group, ConflictScan.ActionRef a, List<Shortcut> shortcuts) {
+    KeyStroke stroke = primaryStroke(shortcuts);
+    if (stroke != null) group.add(menuAction("Rebind…", false, () -> rebindActions(stroke, List.of(a.id()))));
+    if (!shortcuts.isEmpty()) group.add(menuAction("Remove…", false, () -> confirmRemove(null, List.of(a.id()))));
+    if (revertable(a.id())) group.add(menuAction("Revert…", false, () -> confirmRevert(List.of(a.id()))));
+    group.addSeparator();
+    group.add(menuAction("Settings…", false, () -> openKeymapSettings(a.id()), SETTINGS_ICON));
+  }
+
   @Override
   protected JComponent createCenterPanel() {
     tree = new Tree(new DefaultTreeModel(buildRoot()));
@@ -300,6 +378,11 @@ public final class ConflictReportDialog extends DialogWrapper {
         String id = settingsIconHit(e);
         if (id != null) openKeymapSettings(id);
       }
+      // isPopupTrigger() fires on mousePressed or mouseReleased depending on platform/LAF, so both are
+      // checked; a right-click first selects the row under the cursor (same as the detail pane would
+      // show for a left click) before the menu offers that row's operations.
+      @Override public void mousePressed(MouseEvent e) { maybeShowContextMenu(e); }
+      @Override public void mouseReleased(MouseEvent e) { maybeShowContextMenu(e); }
     });
     tree.addMouseMotionListener(new MouseAdapter() {
       @Override public void mouseMoved(MouseEvent e) {
@@ -1041,7 +1124,8 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "<li>Work through the report: <b>Keymap conflicts</b> and <b>Overlaps {ide} doesn't already "
         + "flag</b> (macOS takes the key), <b>Double-bound keys</b> (one key, several actions), "
         + "<b>Modified shortcuts</b> (this keymap's own changes), and <b>Inherited Shortcuts</b> (taken "
-        + "from the parent as-is). Click any row for the full explanation.</li>"
+        + "from the parent as-is). Click any row for the full explanation, or <b>right-click</b> it for "
+        + "the same fix links as a quick context menu.</li>"
         + "<li>On a binding: <b>Rebind…</b> (press the new key, or click <b>Suggest…</b> for a free "
         + "one), <b>Remove…</b>, <b>Revert…</b> to the parent's binding, or <b>Settings…</b> to jump to "
         + "the platform Keymap page.</li>"
@@ -3485,7 +3569,9 @@ public final class ConflictReportDialog extends DialogWrapper {
             super.replace(fb, offset, length, text, attr);  // programmatic display (e.g. "Enter") passes through
             return;
           }
-          String last = text.substring(text.length() - 1);   // manual typing keeps a single character
+          // Uppercase for display only (e.g. typed "c" shows "C") — a bare "C" is <shift>-c, a physical
+          // key with no separate lowercase state, so the field should read the way the keycap will.
+          String last = text.substring(text.length() - 1).toUpperCase(Locale.ROOT);
           super.replace(fb, 0, fb.getDocument().getLength(), last, attr);
         }
       });

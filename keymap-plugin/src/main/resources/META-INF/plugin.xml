@@ -22,7 +22,9 @@
           IDE doesn't already flag</b> (macOS takes the key), <b>Double-bound
           keys</b> (one key, several actions), <b>Modified shortcuts</b> (this
           keymap's own changes), and <b>Inherited Shortcuts</b> (taken from the
-          parent as-is). Click any row for the full explanation.</li>
+          parent as-is). Click any row for the full explanation, or
+          <b>right-click</b> it for the same fix links as a quick context
+          menu.</li>
       <li>On a binding: <b>Rebind…</b> (press the new key, or click
           <b>Suggest…</b> for a free one), <b>Remove…</b>, <b>Revert…</b> to the
           parent's binding, or <b>Settings…</b> to jump to the platform Keymap
