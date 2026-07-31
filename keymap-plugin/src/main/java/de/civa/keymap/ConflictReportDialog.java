@@ -38,6 +38,7 @@ import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.ValidationInfo;
 import com.intellij.openapi.util.JDOMUtil;
+import com.intellij.openapi.util.text.HtmlChunk;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileWrapper;
@@ -48,7 +49,6 @@ import com.intellij.ui.KeyStrokeAdapter;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
 import com.intellij.ui.SimpleListCellRenderer;
-import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
@@ -523,7 +523,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       menuAction("Rename…", true, this::startRename),
       menuAction("Delete…", true, this::deleteKeymap));
     group.addSeparator();
-    group.add(new ToggleAction("Show modified only") {
+    group.add(new ToggleAction("Show Modified Only") {
       @Override public boolean isSelected(@NotNull AnActionEvent e) { return showModifiedOnly; }
       @Override public void setSelected(@NotNull AnActionEvent e, boolean state) {
         showModifiedOnly = state;
@@ -1864,7 +1864,7 @@ public final class ConflictReportDialog extends DialogWrapper {
   private void buildConflictDetail(ConflictScan.ExternalConflict c, @Nullable String extraNoteHtml) {
     addBlock(shortcutHeaderRow(Keycaps.forKeystroke(c.stroke(), null), null));
     addHtml(statusBadge(c) + factRow("macOS", escape(macList(c))));
-    addBlock(boldLabel("Actions"));
+    addBlock(boldLabel());
     ActionListView list = new ActionListView(c.stroke(), c.actions());
     detailPanel.add(list);
     addBlock(linksRow(c.stroke(), c.actions(), list));
@@ -1878,11 +1878,11 @@ public final class ConflictReportDialog extends DialogWrapper {
     KeyStroke first = ((KeyboardShortcut) c.shortcut()).getFirstKeyStroke();
     addBlock(shortcutHeaderRow(Keycaps.forShortcut(c.shortcut()), null));
     addHtml(internalStatus(c));
-    addBlock(boldLabel("Actions"));
+    addBlock(boldLabel());
     ActionListView list = new ActionListView(first, c.actions());
     detailPanel.add(list);
     addBlock(linksRow(first, c.actions(), list));
-    addHtml(callout("What to do", escape(internalNote(c))));
+    addHtml(callout("What to do", escape(internalNote())));
   }
 
   /** A shortcut this keymap declares itself (differs from the parent): its action, binding and source,
@@ -1984,7 +1984,9 @@ public final class ConflictReportDialog extends DialogWrapper {
   private ActionLink settingsLink(@Nullable String actionId) {
     ActionLink link = new ActionLink("Settings…", (ActionListener) e -> openKeymapSettings(actionId));
     link.setExternalLinkIcon();
-    if (actionId != null) link.setToolTipText("Open Keymap settings at “" + actionName(actionId) + "”");
+    if (actionId != null) {
+      com.intellij.ide.HelpTooltipKt.setToolTipText(link, HtmlChunk.text("Open Keymap settings at “" + actionName(actionId) + "”"));
+    }
     return link;
   }
 
@@ -2093,8 +2095,8 @@ public final class ConflictReportDialog extends DialogWrapper {
     return Math.max(JBUI.scale(140), base - JBUI.scale(20));
   }
 
-  private JComponent boldLabel(String text) {
-    JBLabel label = new JBLabel(text);
+  private JComponent boldLabel() {
+    JBLabel label = new JBLabel("Actions");
     label.setFont(label.getFont().deriveFont(Font.BOLD));
     label.setBorder(JBUI.Borders.empty(8, 0, 2, 0));
     return label;
@@ -2727,7 +2729,7 @@ public final class ConflictReportDialog extends DialogWrapper {
       + c.actions().size() + " actions use this shortcut.</div>";
   }
 
-  private static String internalNote(ConflictScan.InternalConflict c) {
+  private static String internalNote() {
     return "This is usually not a conflict — {ide} picks the action that fits where you are (the "
       + "editor, a tool window, a dialog). {ide}'s own Keymap tool treats these the same way and "
       + "doesn't flag them. It only breaks if two can fire in the same place; rebind or remove one "
@@ -2952,7 +2954,7 @@ public final class ConflictReportDialog extends DialogWrapper {
     private ActionLink actionLabel(ConflictScan.ActionRef a) {
       ActionLink link = new ActionLink(a.label(), (ActionListener) e -> rebindActions(stroke, List.of(a.id())));
       String desc = a.description() != null && !a.description().isBlank() ? a.description() : a.id();
-      link.setToolTipText(desc);
+      com.intellij.ide.HelpTooltipKt.setToolTipText(link, HtmlChunk.text(desc));
       return link;
     }
 

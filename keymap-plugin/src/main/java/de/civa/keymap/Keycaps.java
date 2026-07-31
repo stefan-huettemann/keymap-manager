@@ -46,11 +46,6 @@ final class Keycaps {
 
   // ---- components -----------------------------------------------------------------------------
 
-  /** A transparent, left-to-right row of keycaps for a list of shortcuts (default label colour). */
-  static JComponent forShortcuts(List<Shortcut> shortcuts) {
-    return forShortcuts(shortcuts, null);
-  }
-
   /**
    * A transparent row of keycaps for a list of shortcuts. Several shortcuts are separated by a faint
    * "/". {@code fg} overrides the glyph <em>and</em> frame colour (used by the tree renderer so caps

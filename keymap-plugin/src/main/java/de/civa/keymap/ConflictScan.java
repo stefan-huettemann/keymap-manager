@@ -177,12 +177,7 @@ final class ConflictScan {
       String id = ((Element) child).getAttributeValue("id");
       if (id != null && !id.isEmpty()) ids.add(id);
     }
-    List<String> sorted = ids.stream().distinct().sorted().toList();
-    List<ModifiedBinding> result = new ArrayList<>(sorted.size());
-    for (ActionRef ref : refs(sorted)) {
-      result.add(new ModifiedBinding(ref, List.of(keymap.getShortcuts(ref.id()))));
-    }
-    return result;
+    return toModifiedBindings(keymap, ids);
   }
 
   /** Effective bindings inherited from the parent chain: every shortcut-bearing action id the keymap
@@ -195,6 +190,11 @@ final class ConflictScan {
       if (keymap.getShortcuts(id).length == 0) continue;
       ids.add(id);
     }
+    return toModifiedBindings(keymap, ids);
+  }
+
+  /** {@code ids} deduped, sorted, and paired with their current shortcuts on {@code keymap}. */
+  private static List<ModifiedBinding> toModifiedBindings(Keymap keymap, List<String> ids) {
     List<String> sorted = ids.stream().distinct().sorted().toList();
     List<ModifiedBinding> result = new ArrayList<>(sorted.size());
     for (ActionRef ref : refs(sorted)) {
@@ -207,7 +207,7 @@ final class ConflictScan {
   private static @Nullable String sourceOf(AnAction action) {
     try {
       PluginDescriptor plugin = PluginManager.getPluginByClass(action.getClass());
-      if (plugin == null || plugin.getPluginId() == null) return null;
+      if (plugin == null) return null;
       return "com.intellij".equals(plugin.getPluginId().getIdString()) ? "IDE" : plugin.getName();
     }
     catch (RuntimeException e) {
