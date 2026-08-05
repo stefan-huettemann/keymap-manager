@@ -1,7 +1,11 @@
 package de.civa.keymap;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.IdeEventQueue;
+import com.intellij.ide.plugins.IdeaPluginDescriptor;
+import com.intellij.ide.plugins.PluginManager;
+import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ApplicationNamesInfo;
 import com.intellij.openapi.actionSystem.ActionManager;
@@ -22,11 +26,13 @@ import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.fileChooser.FileChooserFactory;
 import com.intellij.openapi.fileChooser.FileSaverDescriptor;
 import com.intellij.openapi.fileChooser.FileSaverDialog;
+import com.intellij.openapi.extensions.PluginId;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.keymap.Keymap;
 import com.intellij.openapi.keymap.KeymapManager;
 import com.intellij.openapi.keymap.KeymapManagerListener;
 import com.intellij.openapi.keymap.KeymapUtil;
+import com.intellij.openapi.keymap.NationalKeyboardSupport;
 import com.intellij.openapi.keymap.ex.KeymapManagerEx;
 import com.intellij.openapi.keymap.impl.KeymapImpl;
 import com.intellij.openapi.keymap.impl.ui.KeymapPanel;
@@ -48,7 +54,9 @@ import com.intellij.ui.JBColor;
 import com.intellij.ui.KeyStrokeAdapter;
 import com.intellij.ui.LayeredIcon;
 import com.intellij.ui.OnePixelSplitter;
+import com.intellij.ui.SearchTextField;
 import com.intellij.ui.SimpleListCellRenderer;
+import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.ActionLink;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
@@ -86,6 +94,7 @@ import javax.swing.SwingUtilities;
 import javax.swing.ToolTipManager;
 import javax.swing.border.Border;
 import javax.swing.event.DocumentEvent;
+import javax.swing.event.HyperlinkEvent;
 import javax.swing.plaf.basic.BasicTreeUI;
 import javax.swing.text.AbstractDocument;
 import javax.swing.text.AttributeSet;
@@ -106,6 +115,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
+import java.awt.GridBagLayout;
 import java.awt.Rectangle;
 import java.awt.Window;
 import java.awt.event.ActionListener;
@@ -131,6 +141,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.Set;
 import java.util.TreeMap;
@@ -142,7 +153,9 @@ import java.util.zip.ZipOutputStream;
  * {@link ConflictScan}. Laid out in three parts, top to bottom:
  * <ol>
  *   <li><b>Keymap selector</b> — a dropdown of every installed keymap, defaulting to the active
- *       one; picking another re-scans and repopulates the whole report.</li>
+ *       one; picking another re-scans and repopulates the whole report. Beside it, an
+ *       <b>action filter</b> field narrowing the navigator to the actions whose name matches
+ *       what is typed (see {@link #applyFilter}).</li>
  *   <li><b>Summary pane</b> — one prominent, icon-tagged status line for the selected keymap.</li>
  *   <li><b>Details pane</b> — a {@link Tree} navigating the sections (this keymap's macOS conflicts;
  *       duplicate shortcuts it introduced; window-switch overlaps IntelliJ ignores; benign
@@ -165,6 +178,15 @@ public final class ConflictReportDialog extends DialogWrapper {
    *  into user-facing text wherever the {@code {ide}} token appears. */
   private static final String IDE_NAME = ApplicationNamesInfo.getInstance().getFullProductName();
 
+  /** This plugin's own id — the help dialog's About section reads name/version/vendor from the matching
+   *  descriptor, so they can never drift from {@code plugin.xml} / {@code build.gradle.kts}. Looked up by
+   *  id rather than via {@code PluginManager.getPluginByClass}, which returns null when the IDE itself runs
+   *  from sources. Must stay in sync with {@code <id>} in plugin.xml. */
+  private static final PluginId PLUGIN_ID = PluginId.getId("de.civa.plugins.keymapmanager");
+
+  /** The project's repository, linked from the About section (same URL as plugin.xml's description). */
+  private static final String SOURCE_URL = "https://github.com/stefan-huettemann/keymap-manager";
+
   private final Project project;
   private Keymap keymap;   // the keymap the report currently previews (the combo selection)
   private Keymap active;   // the keymap actually active in the IDE (moves on Activate)
@@ -177,6 +199,9 @@ public final class ConflictReportDialog extends DialogWrapper {
   private boolean showActionIds;      // gear toggle: show the internal action id next to each name
   private boolean showKeymap;         // gear toggle: show the keymap that defines each binding
   private boolean showModifiedOnly;   // gear toggle: show only the "Modified shortcuts" section
+  private SearchTextField searchField;      // the action filter beside the keymap selector
+  private String filter = "";               // its text, trimmed and lowercased for matching ("" = no filter)
+  private String filterText = "";           // the same text as typed — what the "no match" messages quote
   private final Map<Keymap, Set<String>> ownIdsCache = new HashMap<>();  // per-keymap own declarations (for showKeymap)
   private JBLabel summaryText;
   private JBLabel summaryIcon;
@@ -232,14 +257,21 @@ public final class ConflictReportDialog extends DialogWrapper {
   /** macOS shortcut ids IntelliJ's own keymap tool deliberately excludes from its conflict banner. */
   private static final Set<String> IDEA_IGNORED_IDS = Set.of("FocusNextApplicationWindow", "FocusPreviousApplicationWindow");
 
-  /** Typed tree payloads; the renderer and detail pane switch on these. */
-  private record Section(String title, int count) {}
+  // Typed tree payloads; the renderer and detail pane switch on these.
+
+  /** A category row. {@code count} is how many rows it lists, {@code total} how many the category holds
+   *  before the action filter — equal when no filter is on, and rendered as "3 of 41" when they differ, so
+   *  a filtered category can't read as a short one. */
+  private record Section(String title, int count, int total) {}
   private record Subtitle(String sectionTitle) {}   // gray one-liner shown as a section's first child
   /** An empty category's placeholder row. All five categories are always listed, so an empty one has to
    *  say so rather than vanish: {@code message} is the one-liner in the navigator, {@code explanation}
    *  the "what would be here, and why isn't it" text {@link #buildEmptyDetail} shows in the details pane,
    *  and {@code ok} distinguishes good news (nothing to fix) from a problem (the scan couldn't run). */
   private record Empty(String sectionTitle, String message, String explanation, boolean ok) {}
+  /** Not a tree row — the detail-pane payload for "the action filter matched nothing", shown beside the
+   *  empty navigator ({@link #updateEmptyText}) because no row is left to select. */
+  private record NoMatch(String query) {}
   private record KeymapItem(ConflictScan.ExternalConflict c) {}
   private record IdeaIgnoredItem(ConflictScan.ExternalConflict c) {}
   private record ModifiedItem(ConflictScan.ModifiedBinding m) {}
@@ -447,9 +479,11 @@ public final class ConflictReportDialog extends DialogWrapper {
   // ---- keymap selector ------------------------------------------------------------------------
 
   /**
-   * Title, combo box and action buttons stacked and centered. The combo lists the active keymap
-   * first, then this plugin's keymaps, then everything else alphabetically, with a rule between
-   * groups; each entry is tagged with its source. Activate/Reset appear only for a non-active pick.
+   * Label, combo box, gear and action filter as one row <b>centred on the window</b>, with the
+   * Activate/Reset row centred under it and the help button pinned right (vertically centred on the row).
+   * The combo lists the active keymap first, then this plugin's keymaps, then everything else
+   * alphabetically, with a rule between groups; each entry is tagged with its source. Activate/Reset
+   * appear only for a non-active pick.
    */
   private JComponent selectorPane() {
     keymapCombo = new ComboBox<>(orderedModel());
@@ -494,15 +528,22 @@ public final class ConflictReportDialog extends DialogWrapper {
     buttonRow = centered(activate, reset);
     buttonRow.setVisible(false);
 
-    // Help button: a slightly larger, blue "?" pinned to the right of the keymap row.
+    // Help button: a slightly larger, blue "?" pinned to the right of the keymap row and vertically
+    // centred on it. GridBagLayout centres its single child in both axes; a FlowLayout would lay it out
+    // at the *top* of the (combo-height) EAST slot, leaving the "?" floating above the row.
     Icon helpIcon = IconUtil.scale(
       IconUtil.colorize(AllIcons.General.ContextHelp, LINK_COLOR, false, false), null, 1.3f);
     InplaceButton help = new InplaceButton("How to use this", helpIcon, e -> showHelp());
-    JPanel helpHolder = new JPanel(new FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0));
+    JPanel helpHolder = new JPanel(new GridBagLayout());
     helpHolder.add(help);
-    JPanel keymapRow = new JPanel(new BorderLayout());
-    keymapRow.add(centered(new JBLabel("Keymap:"), keymapCard, gear[0]), BorderLayout.CENTER);
+    // The selector + filter group is centred on the *window*: BorderLayout hands EAST its width first, so
+    // CENTER alone would sit half the help button's width to the left of true centre. An equally wide,
+    // empty WEST spacer restores the symmetry (and keeps the group's centre on the buttonRow's below).
+    JPanel keymapRow = new JPanel(new BorderLayout(JBUI.scale(8), 0));
+    keymapRow.add(centered(new JBLabel("Keymap:"), keymapCard, gear[0],
+                           Box.createHorizontalStrut(JBUI.scale(10)), searchPane()), BorderLayout.CENTER);
     keymapRow.add(helpHolder, BorderLayout.EAST);
+    keymapRow.add(mirrorSpacer(helpHolder), BorderLayout.WEST);
 
     JPanel selector = new JPanel();
     selector.setLayout(new BoxLayout(selector, BoxLayout.Y_AXIS));
@@ -511,6 +552,81 @@ public final class ConflictReportDialog extends DialogWrapper {
     selector.add(keymapRow);
     selector.add(buttonRow);
     return selector;
+  }
+
+  // ---- action filter --------------------------------------------------------------------------
+
+  /**
+   * The filter field beside the keymap combo. A {@link SearchTextField} for the platform look (magnifier,
+   * clear button, and Esc clearing the text rather than closing the dialog — the platform's
+   * {@code ClearText} action, registered on the field, is enabled only while it holds text, so an empty
+   * field still lets Esc close the dialog). Its history popup is off: this is a live view filter, not a
+   * search you submit.
+   */
+  private JComponent searchPane() {
+    searchField = new SearchTextField(false);
+    searchField.getTextEditor().setColumns(18);
+    searchField.getTextEditor().getEmptyText().setText("Filter by action name");
+    searchField.getTextEditor().setToolTipText(
+      "Show only the actions whose name contains this text (case-insensitive)");
+    searchField.addDocumentListener(new DocumentAdapter() {
+      @Override protected void textChanged(@NotNull DocumentEvent e) { applyFilter(searchField.getText()); }
+    });
+    return searchField;
+  }
+
+  /**
+   * Apply the typed text as a view filter over the current scan — no re-scan, the same "re-shape the tree"
+   * path the "Show modified only" toggle takes. Sections keep only the rows whose actions match (see
+   * {@link #matchesFilter}); a section left with nothing is dropped entirely, and when <b>no</b> section
+   * survives the navigator is empty and says so ({@link #rebuildTree}).
+   */
+  private void applyFilter(String text) {
+    String typed = text.trim();
+    String normalized = typed.toLowerCase(Locale.ROOT);
+    if (normalized.equals(filter)) { filterText = typed; return; }   // e.g. only whitespace/case changed
+    filter = normalized;
+    filterText = typed;
+    rebuildTree();
+  }
+
+  private boolean filtering() {
+    return !filter.isEmpty();
+  }
+
+  /** Whether a navigator row survives the current filter: it has to <b>name</b> a matching action.
+   *  Matching is a case-insensitive substring of the action's displayed name — the text the navigator,
+   *  the detail pane and the confirm dialogs all show (for an action the platform gives no name, that
+   *  <i>is</i> its id, per {@link ConflictScan.ActionRef#label()}). Every action on a row counts, not
+   *  just the first one the row happens to display, so a key whose second action matches is still found;
+   *  its detail pane lists them all. Rows that name no action (a section, its subtitle, an empty
+   *  placeholder) are structural — the filter never sees them. */
+  private boolean matchesFilter(Object payload) {
+    if (!filtering()) return true;
+    if (payload instanceof KeymapItem ki) return matchesAny(ki.c().actions());
+    if (payload instanceof IdeaIgnoredItem ii) return matchesAny(ii.c().actions());
+    if (payload instanceof ConflictScan.InternalConflict c) return matchesAny(c.actions());
+    if (payload instanceof ModifiedItem mi) return matches(mi.m().action());
+    if (payload instanceof InheritedItem it) return matches(it.m().action());
+    // A supplement row names a macOS feature rather than an action, but it concerns one — match either.
+    if (payload instanceof ConflictAdvice.Supplement s) {
+      String id = s.actionId();
+      return contains(s.macSide()) || contains(s.ideaSide()) || (id != null && contains(actionName(id)));
+    }
+    return true;
+  }
+
+  private boolean matchesAny(List<ConflictScan.ActionRef> actions) {
+    for (ConflictScan.ActionRef a : actions) if (matches(a)) return true;
+    return false;
+  }
+
+  private boolean matches(ConflictScan.ActionRef a) {
+    return contains(a.label());
+  }
+
+  private boolean contains(@Nullable String text) {
+    return text != null && text.toLowerCase(Locale.ROOT).contains(filter);
   }
 
   /** A real IDEA action menu: Export…/Import… and Duplicate always, Rename/Delete when editable. */
@@ -680,6 +796,12 @@ public final class ConflictReportDialog extends DialogWrapper {
     JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, JBUI.scale(6), JBUI.scale(2)));
     for (Component c : children) row.add(c);
     return row;
+  }
+
+  /** An invisible spacer as wide as {@code sibling} — put opposite a {@code BorderLayout} EAST/WEST
+   *  component so the CENTER one is centred on the whole row instead of on the space left beside it. */
+  private static Component mirrorSpacer(JComponent sibling) {
+    return Box.createRigidArea(new Dimension(sibling.getPreferredSize().width, 0));
   }
 
   /** Combo contents in group order — active, then own, then the rest — recording group starts. */
@@ -862,61 +984,69 @@ public final class ConflictReportDialog extends DialogWrapper {
       List<ConflictScan.ExternalConflict> normal = scan.keymapConflicts.stream().filter(c -> !ideaIgnored(c)).toList();
       List<ConflictScan.ExternalConflict> ignored = scan.keymapConflicts.stream().filter(c -> ideaIgnored(c)).toList();
 
-      DefaultMutableTreeNode keymapNode = section(SEC_KEYMAP, normal.size());
-      if (!scan.jbrApiAvailable) {
-        // Empty for a different reason than "all clear", so it gets its own text and the warning look.
-        keymapNode.add(node(new Empty(SEC_KEYMAP, "macOS scan unavailable on this runtime.",
-          "The live scan reads the macOS shortcut table through a JetBrains Runtime API this runtime "
-          + "doesn't expose, so nothing could be checked — this section is empty because no scan ran, "
-          + "not because no shortcut collides. Running {ide} on the JetBrains Runtime (the default) "
-          + "brings the scan back.", false)));
-      }
-      else if (normal.isEmpty()) {
-        keymapNode.add(node(emptyRow(SEC_KEYMAP, "No conflicts with macOS. Nothing to change.")));
-      }
-      for (ConflictScan.ExternalConflict c : normal) keymapNode.add(new DefaultMutableTreeNode(new KeymapItem(c)));
-      root.add(keymapNode);
+      // The macOS scan being unavailable is a different kind of empty than "all clear", so the
+      // placeholder gets its own text and the warning look.
+      Empty keymapEmpty = scan.jbrApiAvailable
+        ? emptyRow(SEC_KEYMAP, "No conflicts with macOS. Nothing to change.")
+        : new Empty(SEC_KEYMAP, "macOS scan unavailable on this runtime.",
+            "The live scan reads the macOS shortcut table through a JetBrains Runtime API this runtime "
+            + "doesn't expose, so nothing could be checked — this section is empty because no scan ran, "
+            + "not because no shortcut collides. Running {ide} on the JetBrains Runtime (the default) "
+            + "brings the scan back.", false);
+      addSection(root, SEC_KEYMAP, rows(normal, KeymapItem::new), normal.size(), keymapEmpty);
 
       // "Overlaps IntelliJ doesn't flag": window-switch overlaps IntelliJ gets first, plus the curated
       // SUPPLEMENT notes (macOS features the live scan can't see) — all keep working, shown for completeness.
       List<ConflictAdvice.Supplement> supplements = activeSupplements();
-      DefaultMutableTreeNode ign = section(SEC_IDEA_IGNORED, ignored.size() + supplements.size());
-      if (ignored.isEmpty() && supplements.isEmpty()) {
-        ign.add(node(emptyRow(SEC_IDEA_IGNORED, "No unflagged overlaps. Nothing to review.")));
-      }
-      for (ConflictScan.ExternalConflict c : ignored) ign.add(new DefaultMutableTreeNode(new IdeaIgnoredItem(c)));
-      for (ConflictAdvice.Supplement s : supplements) ign.add(new DefaultMutableTreeNode(s));
-      root.add(ign);
+      List<Object> ignoredRows = new ArrayList<>(rows(ignored, IdeaIgnoredItem::new));
+      ignoredRows.addAll(rows(supplements, s -> s));
+      addSection(root, SEC_IDEA_IGNORED, ignoredRows, ignored.size() + supplements.size(),
+        emptyRow(SEC_IDEA_IGNORED, "No unflagged overlaps. Nothing to review."));
 
-      DefaultMutableTreeNode dbl = section(SEC_DOUBLE, scan.internal.size());
-      if (scan.internal.isEmpty()) {
-        dbl.add(node(emptyRow(SEC_DOUBLE, "No key is bound to more than one action.")));
-      }
-      for (ConflictScan.InternalConflict c : scan.internal) dbl.add(new DefaultMutableTreeNode(c));
-      root.add(dbl);
+      addSection(root, SEC_DOUBLE, rows(scan.internal, c -> c), scan.internal.size(),
+        emptyRow(SEC_DOUBLE, "No key is bound to more than one action."));
     }
 
     // Modified shortcuts — this keymap's own declarations (its diff vs the parent). Always present; the
     // only section when "Show modified only" is on. Informational, collapsed by default otherwise.
-    DefaultMutableTreeNode mod = section(SEC_MODIFIED, scan.modified.size());
-    if (scan.modified.isEmpty()) {
-      mod.add(node(emptyRow(SEC_MODIFIED, "This keymap declares no shortcuts of its own.")));
-    }
-    for (ConflictScan.ModifiedBinding m : scan.modified) mod.add(new DefaultMutableTreeNode(new ModifiedItem(m)));
-    root.add(mod);
+    addSection(root, SEC_MODIFIED, rows(scan.modified, ModifiedItem::new), scan.modified.size(),
+      emptyRow(SEC_MODIFIED, "This keymap declares no shortcuts of its own."));
 
     // Inherited shortcuts — effective bindings from the parent chain this keymap doesn't declare itself.
     // Informational, collapsed by default; hidden in "Show modified only" mode. Can be large.
     if (!showModifiedOnly) {
-      DefaultMutableTreeNode inh = section(SEC_INHERITED, scan.inherited.size());
-      if (scan.inherited.isEmpty()) {
-        inh.add(node(emptyRow(SEC_INHERITED, "No inherited shortcuts (this keymap declares them all).")));
-      }
-      for (ConflictScan.ModifiedBinding m : scan.inherited) inh.add(new DefaultMutableTreeNode(new InheritedItem(m)));
-      root.add(inh);
+      addSection(root, SEC_INHERITED, rows(scan.inherited, InheritedItem::new), scan.inherited.size(),
+        emptyRow(SEC_INHERITED, "No inherited shortcuts (this keymap declares them all)."));
     }
 
     return root;
+  }
+
+  /** The row payloads a section shows: one per scan entry, minus the ones the action filter drops. */
+  private <T> List<Object> rows(List<T> entries, Function<T, Object> toPayload) {
+    List<Object> payloads = new ArrayList<>();
+    for (T e : entries) {
+      Object payload = toPayload.apply(e);
+      if (matchesFilter(payload)) payloads.add(payload);
+    }
+    return payloads;
+  }
+
+  /**
+   * Add one category to the tree: its title row (count = the rows actually listed), the subtitle info-row,
+   * then the rows — or {@code placeholder} when there are none.
+   * <p>With the action filter active a section that matched nothing is <b>omitted</b> instead: its
+   * "nothing to fix here" placeholder would be a lie (the category may be full, just not of matches), and
+   * dropping it keeps the navigator to the sections that actually answer the query. Unfiltered, every
+   * category is always listed, empty or not — see {@link #emptyExplanation}.
+   */
+  private void addSection(DefaultMutableTreeNode root, String title, List<Object> rows, int total,
+                          Empty placeholder) {
+    if (rows.isEmpty() && filtering()) return;
+    DefaultMutableTreeNode node = section(title, rows.size(), total);
+    if (rows.isEmpty()) node.add(node(placeholder));
+    for (Object payload : rows) node.add(node(payload));
+    root.add(node);
   }
 
   /** The curated {@link ConflictAdvice#SUPPLEMENT} entries that apply to the <b>selected</b> keymap:
@@ -931,8 +1061,8 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   /** A section node whose first child is its subtitle info-row (the explanation shown above the list
    *  when the category is expanded — spec 0003). Items are added by the caller after this. */
-  private DefaultMutableTreeNode section(String title, int count) {
-    DefaultMutableTreeNode node = new DefaultMutableTreeNode(new Section(title, count));
+  private DefaultMutableTreeNode section(String title, int count, int total) {
+    DefaultMutableTreeNode node = new DefaultMutableTreeNode(new Section(title, count, total));
     node.add(new DefaultMutableTreeNode(new Subtitle(title)));
     return node;
   }
@@ -996,9 +1126,29 @@ public final class ConflictReportDialog extends DialogWrapper {
 
   /** Re-shape the tree from the current scan (no re-scan) — used when only the view filter changes. */
   private void rebuildTree() {
-    tree.setModel(new DefaultTreeModel(buildRoot()));
+    DefaultMutableTreeNode root = buildRoot();
+    tree.setModel(new DefaultTreeModel(root));
+    updateEmptyText();
     expandActionableSections();
     selectFirstRow();
+    // With no row left to select, the detail pane would keep showing the row the filter just hid — say
+    // what happened there instead (the navigator's own empty text has room for a line or two, no more).
+    if (root.getChildCount() == 0) showDetail(new NoMatch(filterText));
+  }
+
+  /** The message the navigator shows when it holds no rows at all — only reachable through the action
+   *  filter (unfiltered, every category is listed even when empty), so it names the query and offers to
+   *  clear it. Short lines: {@code StatusText} centres them without wrapping. */
+  private void updateEmptyText() {
+    if (!filtering()) { tree.getEmptyText().setText(""); return; }   // unfiltered, the tree is never empty
+    tree.getEmptyText()
+      .setText("No action matches “" + ellipsize(filterText, 30) + "”")
+      .appendLine("The filter matches action names.", SimpleTextAttributes.GRAYED_ATTRIBUTES, null)
+      .appendLine("Clear the filter", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES, e -> searchField.setText(""));
+  }
+
+  private static String ellipsize(String text, int max) {
+    return text.length() <= max ? text : text.substring(0, max - 1) + "…";
   }
 
   /** Expand the sections worth opening: normally the actionable conflict sections (informational ones
@@ -1025,9 +1175,13 @@ public final class ConflictReportDialog extends DialogWrapper {
     }
   }
 
-  /** Which sections open and hold the initial selection: the Modified section alone when "Show modified
-   *  only" is on, otherwise every non-informational (actionable) section. */
+  /** Which sections open and hold the initial selection: with the action filter on, <b>every</b> listed
+   *  section (each one is there because it holds a match — a collapsed match would defeat the filter);
+   *  otherwise the Modified section alone when "Show modified only" is on, else every non-informational
+   *  (actionable) section. */
   private boolean shouldExpand(Object payload) {
+    if (!(payload instanceof Section)) return false;
+    if (filtering()) return true;
     return isModifiedSection(payload) ? showModifiedOnly : !showModifiedOnly && !isInformationalSection(payload);
   }
 
@@ -1093,7 +1247,9 @@ public final class ConflictReportDialog extends DialogWrapper {
     new HelpDialog().show();
   }
 
-  /** A non-editable HTML pane that renders in the UI font (not the default serif) and is transparent. */
+  /** A non-editable HTML pane that renders in the UI font (not the default serif) and is transparent.
+   *  Any {@code <a href>} in the text opens in the browser — a non-editable pane fires hyperlink events,
+   *  it just needs a listener; without one the About section's links would look clickable and do nothing. */
   private static JEditorPane htmlPane(String html) {
     JEditorPane pane = new JEditorPane();
     pane.setEditable(false);
@@ -1101,6 +1257,11 @@ public final class ConflictReportDialog extends DialogWrapper {
     pane.putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, Boolean.TRUE);
     pane.setContentType("text/html");
     pane.setFont(UIUtil.getLabelFont());
+    pane.addHyperlinkListener(e -> {
+      if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED && e.getURL() != null) {
+        BrowserUtil.browse(e.getURL());
+      }
+    });
     pane.setText(subIde(html));
     pane.setCaretPosition(0);
     return pane;
@@ -1121,14 +1282,25 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "<li>Open it from <b>Tools &rarr; Keymap Manager…</b> or Find Action.</li>"
         + "<li>Pick the keymap to inspect from the selector at the top; it defaults to your active "
         + "one.</li>"
+        + "<li>Looking for one action? Type part of its name into the <b>filter field</b> beside the "
+        + "selector — every section then lists only the actions that match, with its count shown as "
+        + "\"matched of total\". <b>Esc</b> in the field, or its &#10005; button, clears it.</li>"
         + "<li>Work through the report: <b>Keymap conflicts</b> and <b>Overlaps {ide} doesn't already "
         + "flag</b> (macOS takes the key), <b>Double-bound keys</b> (one key, several actions), "
         + "<b>Modified shortcuts</b> (this keymap's own changes), and <b>Inherited Shortcuts</b> (taken "
-        + "from the parent as-is). Click any row for the full explanation, or <b>right-click</b> it for "
-        + "the same fix links as a quick context menu.</li>"
+        + "from the parent as-is). Click any row for the full explanation.</li>"
         + "<li>On a binding: <b>Rebind…</b> (press the new key, or click <b>Suggest…</b> for a free "
         + "one), <b>Remove…</b>, <b>Revert…</b> to the parent's binding, or <b>Settings…</b> to jump to "
         + "the platform Keymap page.</li>"
+        + "<li><b>Right-click</b> a row in the navigator for those same operations as a context menu, "
+        + "without going through the detail pane first: <b>Rebind…</b>, <b>Remove…</b>, <b>Revert…</b> "
+        + "and <b>Settings…</b> on a shortcut row — plus <b>Suggest a Shortcut…</b> on a conflict, "
+        + "overlap or double-bound row, where finding a free key is the point — or, on a <i>section</i> "
+        + "row, the bulk <b>Remove…</b> / <b>Revert…</b> for that whole category. A context menu has no "
+        + "checkbox list to narrow things down, so it acts on <i>every</i> action the row names (and a "
+        + "section row on everything it currently lists — whatever the filter hides stays untouched). "
+        + "The edit operations still open their usual dialog, where individual actions can be unticked "
+        + "before you apply.</li>"
         + "<li>Use the gear menu (&#9881;) next to the keymap selector to <b>Export…</b> / "
         + "<b>Import…</b> keymaps as XML, or to <b>Duplicate</b>, <b>Rename</b>, or <b>Delete</b> an "
         + "editable one.</li>"
@@ -1138,10 +1310,11 @@ public final class ConflictReportDialog extends DialogWrapper {
         + "<p style='margin:0'>On a German (T1) MacBook Pro keyboard, select the bundled <b>MacBook Pro "
         + "DE</b> keymap under <b>Settings &rarr; Keymap</b> to start from bindings that are actually "
         + "reachable on that layout.</p>"
+        + aboutHtml()
         + "</body></html>");
       JBScrollPane scroll = new JBScrollPane(pane);
       scroll.setBorder(JBUI.Borders.empty(12));  // margin around the text pane
-      scroll.setPreferredSize(new Dimension(JBUI.scale(560), JBUI.scale(420)));
+      scroll.setPreferredSize(new Dimension(JBUI.scale(560), JBUI.scale(520)));  // tall enough to reach About
       return scroll;
     }
 
@@ -1149,6 +1322,70 @@ public final class ConflictReportDialog extends DialogWrapper {
     protected Action[] createActions() {
       return new Action[]{getOKAction()};
     }
+  }
+
+  /**
+   * The <b>About</b> block closing the help text: what this plugin is (name, version, id, vendor, source)
+   * and what it is running on (IDE + build number, JVM, OS) — assembled so a bug report can be written by
+   * copying it. The last two rows are the plugin's own runtime dependencies rather than trivia: whether the
+   * JetBrains Runtime exposed the macOS shortcut table to {@link ConflictScan} (no scan without it), and
+   * whether national keyboard layout support is on (without which German-layout bindings never fire —
+   * the very thing {@link NationalLayoutCheck} warns about).
+   * <p>The plugin's own facts come from its {@link IdeaPluginDescriptor}, so the version can never drift
+   * from the one in {@code build.gradle.kts}; environment facts come from plain system properties rather
+   * than {@code SystemInfo}, whose constants the platform marks obsolete.
+   */
+  private String aboutHtml() {
+    IdeaPluginDescriptor plugin = PluginManager.getInstance().findEnabledPlugin(PLUGIN_ID);
+    ApplicationInfo ide = ApplicationInfo.getInstance();
+    // A two-column table rather than the detail pane's factRow(): nine facts read far better on an
+    // aligned label column, and letting the table auto-size it keeps that free of pixel guesses.
+    StringBuilder html = new StringBuilder("<h3 style='margin:16px 0 4px 0'>About</h3>"
+      + "<table cellpadding='1' cellspacing='0'>");
+    html.append(aboutRow("Plugin", "<b>" + escape(plugin != null ? plugin.getName() : "Keymap Manager")
+      + "</b>&nbsp; " + escape(plugin != null ? plugin.getVersion() : "version unavailable")));
+    html.append(aboutRow("Plugin ID", escape(PLUGIN_ID.getIdString())));
+    String vendor = plugin != null ? plugin.getVendor() : null;
+    if (vendor != null && !vendor.isBlank()) {
+      String url = plugin.getVendorUrl();
+      html.append(aboutRow("Vendor",
+        url != null && !url.isBlank() ? escape(vendor) + "&nbsp;&nbsp;" + anchor(url, url) : escape(vendor)));
+    }
+    html.append(aboutRow("Source", anchor(SOURCE_URL, "github.com/stefan-huettemann/keymap-manager")));
+    html.append(aboutRow("Runs on", escape(IDE_NAME + " " + ide.getFullVersion())
+      + gray("build " + ide.getBuild().asString())));
+    html.append(aboutRow("Runtime", escape(property("java.runtime.version"))
+      + gray(property("java.vm.vendor"))));
+    html.append(aboutRow("OS", escape(property("os.name") + " " + property("os.version"))
+      + gray(property("os.arch"))));
+    html.append(aboutRow("macOS scan", scan.jbrApiAvailable
+      ? "available" + gray("JetBrains Runtime system-shortcut table")
+      : "<b>unavailable</b>" + gray("no macOS shortcut is scanned on this runtime")));
+    html.append(aboutRow("National layouts",
+      (NationalKeyboardSupport.getInstance().getEnabled() ? "on" : "<b>off</b>")
+      + gray(NationalKeyboardSupport.getVMOption())));
+    return html.append("</table>").toString();
+  }
+
+  /** One About fact: a gray, nowrap label cell (the table sizes the column to the widest one) and its value. */
+  private String aboutRow(String label, String valueHtml) {
+    return "<tr><td valign='top' nowrap><span style='color:" + hex(grayColour()) + "'><b>" + escape(label)
+      + "</b></span>&nbsp;&nbsp;&nbsp;</td><td valign='top'>" + valueHtml + "</td></tr>";
+  }
+
+  /** A dimmed, parenthesised qualifier after a value — the build number, the vendor, the VM option. */
+  private String gray(String text) {
+    return "&nbsp;&nbsp;<span style='color:" + hex(grayColour()) + "'>(" + escape(text) + ")</span>";
+  }
+
+  /** An HTML link in the theme's link colour; clicks are handled by {@link #htmlPane}'s listener. */
+  private static String anchor(String url, String text) {
+    return "<a href='" + escape(url) + "' style='color:" + hex(LINK_COLOR) + "'>" + escape(text) + "</a>";
+  }
+
+  private static String property(String key) {
+    String value = System.getProperty(key);
+    return value != null && !value.isBlank() ? value : "unknown";
   }
 
   // ---- summary --------------------------------------------------------------------------------
@@ -1746,6 +1983,9 @@ public final class ConflictReportDialog extends DialogWrapper {
     else if (payload instanceof Empty e) {
       buildEmptyDetail(e);
     }
+    else if (payload instanceof NoMatch nm) {
+      buildNoMatchDetail(nm.query());
+    }
     else if (payload instanceof KeymapItem ki) {
       buildConflictDetail(ki.c(), null);
     }
@@ -1797,6 +2037,39 @@ public final class ConflictReportDialog extends DialogWrapper {
     addBlock(categoryLinks(e.sectionTitle()));
   }
 
+  /**
+   * The details beside an empty navigator: the action filter matched nothing. Explains what was searched
+   * (the action names in every category the current view lists) and what wasn't (shortcuts, action ids,
+   * and — while "Show modified only" is on — the four hidden categories), then offers <b>Clear filter</b>
+   * and <b>Settings…</b>: the platform Keymap page searches names, descriptions <i>and</i> ids, so it is
+   * the right next stop when a name isn't what the user was after.
+   */
+  private void buildNoMatchDetail(String query) {
+    // Deliberately not the amber ⚠ an empty *category* gets: nothing is wrong with the keymap here, the
+    // filter simply hid everything — and the summary line above still reports the keymap's real status.
+    addHtml("<h3 style='margin:0 0 4px 0'>No matching actions</h3>"
+      + "<div style='margin:0 0 8px 0; font-weight:bold'>"
+      + escape("Nothing in “" + keymap.getPresentableName() + "” matches “" + query + "”.")
+      + "</div>"
+      + grayBlock(escape(
+          "The filter narrows the report to actions whose name contains what you type, across "
+          + (showModifiedOnly ? "the Modified-shortcuts section — the other categories are hidden while "
+                               + "“Show modified only” is on."
+                             : "all five categories.")
+          + " It matches names only: not shortcut text, and not internal action ids (an action with no "
+          + "name of its own is listed under its id, so those still match). Only actions that have a "
+          + "shortcut in this keymap are listed at all — binding a shortcut onto an action that has none "
+          + "is a job for the Keymap settings."))
+      + grayBlock(escape("Check the spelling, try a shorter word, or clear the filter to get the whole "
+          + "report back.")));
+    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(8), JBUI.scale(2)));
+    row.setOpaque(false);
+    row.add(new ActionLink("Clear filter", (ActionListener) e -> searchField.setText("")));
+    row.add(dot());
+    row.add(settingsLink());
+    addBlock(row);
+  }
+
   /** A category's own links: bulk <b>Remove…</b> over all its actions and <b>Revert…</b> over its
    *  {@link #revertable} ones, then <b>Settings…</b>. Inherited Shortcuts gets Settings only, and so does
    *  any category with nothing in it. */
@@ -1821,23 +2094,29 @@ public final class ConflictReportDialog extends DialogWrapper {
     return row;
   }
 
-  /** All action ids in a category (used by its bulk Remove/Revert links). */
+  /** All action ids in a category (used by its bulk Remove/Revert links) — the ones the category
+   *  currently <b>lists</b>: with the action filter on, the rows it filtered out are left alone, so a
+   *  bulk edit can never reach past what the navigator shows. */
   private List<String> categoryIds(String title) {
     LinkedHashSet<String> ids = new LinkedHashSet<>();
     if (title.equals(SEC_KEYMAP) || title.equals(SEC_IDEA_IGNORED)) {
       boolean ignored = title.equals(SEC_IDEA_IGNORED);
       for (ConflictScan.ExternalConflict c : scan.keymapConflicts) {
-        if (ideaIgnored(c) == ignored) for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
+        if (ideaIgnored(c) == ignored && matchesAny(c.actions())) {
+          for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
+        }
       }
     }
     else if (title.equals(SEC_DOUBLE)) {
-      for (ConflictScan.InternalConflict c : scan.internal) for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
+      for (ConflictScan.InternalConflict c : scan.internal) {
+        if (matchesAny(c.actions())) for (ConflictScan.ActionRef a : c.actions()) ids.add(a.id());
+      }
     }
     else if (title.equals(SEC_MODIFIED)) {
-      for (ConflictScan.ModifiedBinding m : scan.modified) ids.add(m.action().id());
+      for (ConflictScan.ModifiedBinding m : scan.modified) if (matches(m.action())) ids.add(m.action().id());
     }
     else if (title.equals(SEC_INHERITED)) {
-      for (ConflictScan.ModifiedBinding m : scan.inherited) ids.add(m.action().id());
+      for (ConflictScan.ModifiedBinding m : scan.inherited) if (matches(m.action())) ids.add(m.action().id());
     }
     return new ArrayList<>(ids);
   }
@@ -3068,7 +3347,10 @@ public final class ConflictReportDialog extends DialogWrapper {
       JComponent caps = null;                  // keycaps, or a gray "(removed)" label
 
       if (p instanceof Section s) {
-        name = subIde(s.title()); bold = true; metaRight = "(" + s.count() + ")";
+        name = subIde(s.title()); bold = true;
+        // While filtering, say what the count is out of — "(3)" alone would read as a short category.
+        metaRight = s.count() == s.total() ? "(" + s.count() + ")"
+                                          : "(" + s.count() + " of " + s.total() + ")";
       }
       else if (p instanceof Subtitle st) {
         name = subIde(sectionSubtitle(st.sectionTitle())); fg = gray;   // gray explanation row

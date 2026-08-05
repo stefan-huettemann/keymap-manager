@@ -9,22 +9,12 @@ spec** (`0003-…`, etc.) with the full requirements + plan, and remove it here.
 
 Each notes the value, the scope/rudder to respect, and a rough size.
 
+Ids are historical and never reused, so a gap just means that entry graduated:
+**B1** (filter / search in the report) became
+[0004](0004-action-search-filter.md), implemented 2026-08-04 — action **names**
+only; keystroke-text matching stayed unscheduled (see 0004 §2).
+
 ---
-
-## B1 — Filter / search in the report
-
-- **What:** a filter box above the report tree; narrows the Conflicts /
-  Double-bound / **Modified** rows live by action name or keystroke text. Esc
-  clears; section counts reflect the filtered totals.
-- **Why:** the Modified section can be hundreds of rows (a base keymap re-states
-  its bindings), and conflict lists get long too. Search makes the report usable
-  at scale — it directly addresses a gap the Phase 1–4 audit view introduced.
-- **Scope / rudder:** platform-agnostic (doesn't lean on macOS), but earns its
-  place by making the manager usable. Keep it a **view filter** over the existing
-  scan lists — no new data model.
-- **Size:** small–medium. A `JBTextField` + a tree filter (rebuild the tree from
-  filtered lists, or filter the `TreeModel`); reuses all existing rendering.
-- **Status:** Idea.
 
 ## B2 — Compare two keymaps
 

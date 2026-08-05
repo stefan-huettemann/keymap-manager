@@ -18,17 +18,28 @@
       <li>Open it from <b>Tools &rarr; Keymap Manager…</b> or Find Action.</li>
       <li>Pick the keymap to inspect from the selector at the top; it defaults
           to your active one.</li>
+      <li>Looking for one action? Type part of its name into the <b>filter
+          field</b> beside the selector — every section then lists only the
+          actions that match, with its count shown as "matched of total".
+          <b>Esc</b> in the field, or its ✕ button, clears it.</li>
       <li>Work through the report: <b>Keymap conflicts</b> and <b>Overlaps the
           IDE doesn't already flag</b> (macOS takes the key), <b>Double-bound
           keys</b> (one key, several actions), <b>Modified shortcuts</b> (this
           keymap's own changes), and <b>Inherited Shortcuts</b> (taken from the
-          parent as-is). Click any row for the full explanation, or
-          <b>right-click</b> it for the same fix links as a quick context
-          menu.</li>
+          parent as-is). Click any row for the full explanation.</li>
       <li>On a binding: <b>Rebind…</b> (press the new key, or click
           <b>Suggest…</b> for a free one), <b>Remove…</b>, <b>Revert…</b> to the
           parent's binding, or <b>Settings…</b> to jump to the platform Keymap
           page.</li>
+      <li><b>Right-click</b> a row in the navigator for those same operations as
+          a context menu, without going through the detail pane first:
+          <b>Rebind…</b>, <b>Remove…</b>, <b>Revert…</b> and <b>Settings…</b> on
+          a shortcut row — plus <b>Suggest a Shortcut…</b> on a conflict, overlap
+          or double-bound row — or, on a <i>section</i> row, the bulk
+          <b>Remove…</b> / <b>Revert…</b> for that whole category. A context menu
+          has no checkbox list to narrow things down, so it acts on <i>every</i>
+          action the row names; the edit operations still open their usual dialog,
+          where individual actions can be unticked before you apply.</li>
       <li>Use the gear menu (⚙) next to the keymap selector to <b>Export…</b> /
           <b>Import…</b> keymaps as XML, or to <b>Duplicate</b>, <b>Rename</b>,
           or <b>Delete</b> an editable one.</li>
@@ -50,6 +61,13 @@
       <li><b>Import a keymap from XML</b> (gear menu → Import…): validates the
           file, resolves a name clash, and lets you pick a parent when the file's
           declared parent isn't installed. Imported keymaps can be deleted again.</li>
+      <li><b>Filter the report by action name</b>: a search field beside the
+          keymap selector narrows every section live; section counts show
+          "matched of total", and an empty result explains itself.</li>
+      <li>The in-IDE help (?) now ends with an <b>About</b> section: plugin
+          version, vendor and source, the IDE / JVM / OS it runs on, and whether
+          the macOS scan and national keyboard layouts are available — copy it
+          into a bug report.</li>
       <li>Bundled <b>MacBook Pro DE</b> keymap for the German (T1) MacBook Pro
           layout.</li>
       <li>Report wording adapts to the host IDE (IntelliJ IDEA, PyCharm, GoLand,

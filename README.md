@@ -37,6 +37,9 @@ Open it from **Tools → Keymap Manager…** or Find Action.
   diff against the parent); **Inherited shortcuts** shows what it takes from the parent
   unchanged. Narrow the report to just the modified ones, or show each action's **id** and the
   **keymap that defines** its binding.
+- **Find one action fast** — the **filter field** beside the keymap selector narrows every
+  section live to the actions whose name you type; each section's count then reads
+  "matched of total", and a filter that matches nothing says so.
 - **Manage keymaps** — pick any installed keymap, then **activate**, **duplicate**, **rename**,
   or **delete** it.
 - **Import / export** keymaps as XML — the whole inheritance chain, or just the categories you
@@ -59,7 +62,7 @@ Studio, …).*
 ```bash
 cd keymap-plugin
 ./gradlew buildPlugin
-# → build/distributions/Keymap-Manager-1.6.0.zip
+# → build/distributions/Keymap-Manager-1.6.1.zip
 ```
 
 Installation and settings-sync setup: [`keymap-plugin/INSTALL.md`](keymap-plugin/INSTALL.md)

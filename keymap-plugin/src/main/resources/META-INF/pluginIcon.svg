@@ -5,7 +5,9 @@
   <!-- ⌘ command glyph, drawn as one looped-square path so it renders without a font -->
   <path d="M 14.9 19 L 14.9 25 A 1.9 1.9 0 1 1 13 23.1 L 19 23.1 A 1.9 1.9 0 1 1 17.1 25 L 17.1 19 A 1.9 1.9 0 1 1 19 20.9 L 13 20.9 A 1.9 1.9 0 1 1 14.9 19 Z"
         fill="none" stroke="#3C3F41" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>
-  <!-- shortcut / conflict badge -->
-  <circle cx="30" cy="12" r="7.5" fill="#EE6E33"/>
-  <path d="M31 6.5 L26.5 12.5 L29.5 12.5 L29 17.5 L33.5 11 L30.5 11 Z" fill="#FFFFFF"/>
+  <!-- "conflicts resolved" badge: a check-mark in the platform's light-theme green (#59A869).
+       Stroked (not filled) with round caps so it stays crisp when the 40px icon is scaled down. -->
+  <circle cx="30" cy="12" r="7.5" fill="#59A869"/>
+  <path d="M26.2 12.1 L28.9 14.9 L33.9 8.9" fill="none" stroke="#FFFFFF" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
