@@ -3467,26 +3467,36 @@ public final class ConflictReportDialog extends DialogWrapper {
   // ---- shortcut input dialog ------------------------------------------------------------------
 
   /**
-   * Enters a keyboard shortcut two ways at once: the key field <b>grabs a full keypress</b> — press
-   * ⌘Ü and the modifier checkboxes and the single-char key fill in — while a bare keypress or manual
-   * checkbox toggling still works if capture can't read the key (dead keys, odd layouts). Capture runs
-   * through an {@link IdeEventQueue} dispatcher scoped to the dialog, so it sees keys even when they
-   * are bound to an IDE action (⌃X would otherwise be swallowed as Cut). The key maps to a {@link
-   * KeyStroke} via {@link KeyEvent#getExtendedKeyCodeForChar}, which also covers the German keys
-   * (Ä Ö Ü ß). A live status line flags whether the assembled shortcut hits macOS <i>or</i> is
-   * already used elsewhere in this keymap.
+   * Enters a keyboard shortcut by <b>pressing it</b>: the key field grabs the keypress — press ⌘Ü, ⇧←
+   * or ⌃F9 and the key plus the modifier checkboxes fill in — and the checkboxes stay editable for
+   * manual adjustment. Capture runs through an {@link IdeEventQueue} dispatcher scoped to the dialog
+   * so it sees keys even when they are bound to an IDE action (⌃X would otherwise be swallowed as
+   * Cut). It grabs <b>every</b> key, including ones a text field would otherwise consume: arrows
+   * (caret movement), Space and Backspace (plain typing). The platform's own field solves this by
+   * overriding {@code processKeyEvent}, which works only because {@code IdeKeyEventDispatcher}
+   * hardcodes a bail-out for {@code focusOwner is ShortcutTextField} — an {@code @ApiStatus.Internal}
+   * class, so that route is closed to us and the event queue is the one public way to get ahead of the
+   * keymap dispatcher.
+   * <p>
+   * Exactly three keys are let through, because they have to keep operating the dialog: bare ↩ (OK),
+   * bare ⎋ (Cancel) and bare ⇥ (move focus out of the field). Those three are therefore the only ones
+   * that still need a radio to be bindable — every other key is simply pressed. Dead keys and IME
+   * composition arrive as InputMethodEvents rather than KeyEvents, so typing into the field still
+   * resolves a key as a fallback.
+   * <p>
+   * A live status line flags whether the assembled shortcut hits macOS <i>or</i> is already used
+   * elsewhere in this keymap.
    */
   private final class ShortcutInputDialog extends DialogWrapper {
     private static final int MODIFIER_MASK = InputEvent.META_DOWN_MASK | InputEvent.ALT_DOWN_MASK
                                            | InputEvent.CTRL_DOWN_MASK | InputEvent.SHIFT_DOWN_MASK;
-    // Keys that can't be typed/pressed into the field (bare ones drive the dialog); pick via a radio.
-    // Space belongs here too: typed into the field it is a single blank that `trim()` throws away, and
-    // pressed bare it falls through to the field as ordinary typing — so it was unbindable without this.
-    // Its label is the word "Space", because that is what the platform renders for VK_SPACE on macOS
-    // (MacKeymapUtil.getKeyText hardcodes it, unlike ↩ ⎋ ⌫ ⇥) — so the radio matches the keycap.
-    private static final int[] SPECIAL_CODES = {KeyEvent.VK_ENTER, KeyEvent.VK_ESCAPE, KeyEvent.VK_BACK_SPACE,
-                                               KeyEvent.VK_TAB, KeyEvent.VK_SPACE};
-    private static final String[] SPECIAL_SYMBOLS = {"↩", "⎋", "⌫", "⇥", "Space"};
+    // The only keys capture cannot take, because bare they must still drive the dialog (see the class
+    // doc): ↩ = OK, ⎋ = Cancel, ⇥ = focus traversal. A radio makes each of them bindable anyway.
+    // ⇧⇥ is *not* here — it carries a modifier, so it is captured like any other combo; plain ⇥ is
+    // enough to leave the field. Everything else (arrows, Space, ⌫, F-keys, letters, German keys) is
+    // captured by pressing it, which is why this list does not grow.
+    private static final int[] SPECIAL_CODES = {KeyEvent.VK_ENTER, KeyEvent.VK_ESCAPE, KeyEvent.VK_TAB};
+    private static final String[] SPECIAL_SYMBOLS = {"↩", "⎋", "⇥"};
 
     private final Keymap keymap;
     private final KeyStroke original;
@@ -3532,22 +3542,30 @@ public final class ConflictReportDialog extends DialogWrapper {
 
     @Override
     protected JComponent createCenterPanel() {
-      keyField.setToolTipText("Press the new shortcut (e.g. ⌃↩ or ⌘Ü), or type a single key.");
+      keyField.setToolTipText("Press the new shortcut — any key, e.g. ⇧←, ⌘Ü or ⌃F9. "
+        + "Use the radios for ↩ ⎋ ⇥, which still operate this dialog.");
       limitToOneChar(keyField);
       // A plain KeyListener never sees IDE-bound combos (⌃X = Cut) — the keymap dispatcher eats them
-      // first. Intercepting modifier combos at the event queue, ahead of that dispatcher, lets the
-      // field grab them (incl. ⌃Enter); bare keys fall through so typing and dialog navigation work.
+      // first — and a text field consumes bare arrows, Space and ⌫ before any listener runs. Grabbing
+      // every key event at the event queue, ahead of both, is what lets the field capture all of them.
       IdeEventQueue.getInstance().addDispatcher(new IdeEventQueue.NonLockedEventDispatcher() {
         @Override public boolean dispatch(@NotNull AWTEvent event) {
           if (!(event instanceof KeyEvent ke) || !keyField.isFocusOwner()) return false;
-          if ((ke.getModifiersEx() & MODIFIER_MASK) == 0) return false;  // bare key → type / navigate
+          if (drivesDialog(ke)) return false;  // bare ↩ ⎋ ⇥ keep operating the dialog
           if (ke.getID() == KeyEvent.KEY_PRESSED) capture(ke);
-          return true;  // swallow the combo so the IDE does not run it (e.g. ⌃X = Cut)
+          // Swallow PRESSED, TYPED and RELEASED alike: PRESSED so the IDE does not run the action
+          // (⌃X = Cut), TYPED so the character is not inserted, RELEASED so nothing sees a half chord.
+          return true;
         }
       }, getDisposable());
+      // Typing can no longer reach the field through the keyboard — the dispatcher above takes it all.
+      // This still fires for input-method text (macOS composes dead keys such as ´ into an
+      // InputMethodEvent, which is not a KeyEvent) and for a context-menu paste, so it stays the
+      // fallback for keys capture cannot read. Anything that is not a single character resolves to
+      // VK_UNDEFINED, which build() treats as "no key yet".
       keyField.getDocument().addDocumentListener(new DocumentAdapter() {
         @Override protected void textChanged(@NotNull DocumentEvent e) {
-          if (settingText) return;  // ignore programmatic display updates (e.g. "Enter")
+          if (settingText) return;  // ignore programmatic display updates (e.g. "Left")
           String t = keyField.getText().trim();
           keyCode = t.length() == 1 ? KeyEvent.getExtendedKeyCodeForChar(t.charAt(0)) : KeyEvent.VK_UNDEFINED;
           syncSpecialRadios(keyCode);  // a typed character is never a special key → clears the radios
@@ -3562,14 +3580,16 @@ public final class ConflictReportDialog extends DialogWrapper {
       }
       previewCaps.setOpaque(false);   // rebuilt live in updateResult() as keycaps
 
-      // Radios for keys that can't be pressed into the field (e.g. ⌘Esc): selecting one sets that key.
+      // Every other key is captured by pressing it; only these three still need a radio, because bare
+      // they have to keep driving the dialog (see the class doc). Selecting one sets that key, so
+      // ⌘⎋ is built by ticking ⎋ and ⌘ — while ⌃⎋ can equally just be pressed.
       JPanel keyRow = new JPanel(new FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0));
       keyRow.add(keyField);
       specialRadios = new JRadioButton[SPECIAL_CODES.length];
       for (int i = 0; i < SPECIAL_CODES.length; i++) {
         int vk = SPECIAL_CODES[i];
         JRadioButton radio = new JRadioButton(SPECIAL_SYMBOLS[i]);
-        radio.setToolTipText(KeyEvent.getKeyText(vk));
+        radio.setToolTipText(KeyEvent.getKeyText(vk) + " — press any other key straight into the field");
         radio.addActionListener(e -> { setKey(vk); updateResult(); });
         specialGroup.add(radio);
         specialRadios[i] = radio;
@@ -3661,10 +3681,29 @@ public final class ConflictReportDialog extends DialogWrapper {
       return KeyEvent.getKeyText(code);
     }
 
+    /**
+     * The three keys the capture dispatcher must let through, so the dialog stays keyboard-operable:
+     * bare ↩ confirms, bare ⎋ cancels, bare ⇥ moves focus out of the field. With a modifier they are
+     * ordinary shortcuts (⌃↩, ⌘⎋, ⇧⇥) and get captured like anything else.
+     */
+    private static boolean drivesDialog(KeyEvent e) {
+      if ((e.getModifiersEx() & MODIFIER_MASK) != 0) return false;
+      int code = e.getKeyCode();
+      return code == KeyEvent.VK_ENTER || code == KeyEvent.VK_ESCAPE || code == KeyEvent.VK_TAB;
+    }
+
+    /**
+     * Resolves the physical key of an event. {@code getExtendedKeyCode()} is the same value the
+     * platform's own {@link com.intellij.ui.KeyStrokeAdapter#getDefaultKeyStroke} falls back to and
+     * what keymap XML stores for the German keys (Ä Ö Ü ß = {@code #10000c4}…), so it is preferred
+     * over deriving a code from the typed character.
+     */
     private static int keyCodeOf(KeyEvent e) {
       int code = e.getKeyCode();
       if (code != KeyEvent.VK_UNDEFINED) return code;
-      char kc = e.getKeyChar();  // some layouts report the char but no VK (e.g. German Ü)
+      int extended = e.getExtendedKeyCode();  // physical key when there is no plain VK (e.g. German Ü)
+      if (extended != KeyEvent.VK_UNDEFINED) return extended;
+      char kc = e.getKeyChar();               // last resort: derive the code from the character
       return kc == KeyEvent.CHAR_UNDEFINED ? KeyEvent.VK_UNDEFINED : KeyEvent.getExtendedKeyCodeForChar(kc);
     }
 
