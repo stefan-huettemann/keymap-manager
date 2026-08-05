@@ -62,7 +62,7 @@ Studio, …).*
 ```bash
 cd keymap-plugin
 ./gradlew buildPlugin
-# → build/distributions/Keymap-Manager-1.6.1.zip
+# → build/distributions/Keymap-Manager-1.7.0.zip
 ```
 
 Installation and settings-sync setup: [`keymap-plugin/INSTALL.md`](keymap-plugin/INSTALL.md)

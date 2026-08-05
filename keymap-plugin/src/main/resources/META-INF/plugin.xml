@@ -55,6 +55,15 @@
   ]]></description>
 
   <change-notes><![CDATA[
+    <p><b>1.7.0 — important fix to the bundled MacBook Pro DE keymap.</b>
+       Up to 1.6.1 it carried Windows/Linux modifiers for 90 actions:
+       <b>Paste was ⌃V instead of ⌘V</b>, and so were Cut, Select All, Save All,
+       Find Action, Reformat Code, Duplicate Line, Recent Files and 83 more.
+       They are now the standard macOS bindings. The keymap only deviates from
+       the stock macOS keymap where a German (T1) layout leaves a key
+       unpressable, or where macOS itself claims the combo — 58 shortcuts in
+       total. If you customised shortcuts on top of this keymap your own
+       changes are kept; everything you did not change now follows macOS.</p>
     <ul>
       <li>Conflict report with per-conflict advice, in-place rebind/remove, and
           XML export.</li>

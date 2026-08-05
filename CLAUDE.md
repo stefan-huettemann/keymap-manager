@@ -12,7 +12,7 @@ A **JetBrains plugins project** (see `README.md`). The active plugin is **Keymap
 
 ```bash
 # Build the plugin ZIP  →  keymap-plugin/build/distributions/Keymap-Manager-<version>.zip
-# (<version> comes from build.gradle.kts; currently 1.6.1)
+# (<version> comes from build.gradle.kts; currently 1.7.0)
 cd keymap-plugin && ./gradlew buildPlugin
 
 # Launch a sandbox IDE with the plugin loaded (for manual verification)

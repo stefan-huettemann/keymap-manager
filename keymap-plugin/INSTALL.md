@@ -25,7 +25,7 @@ see Part 3.
 You need the plugin ZIP:
 
 ```
-keymap-plugin/build/distributions/Keymap-Manager-1.6.1.zip
+keymap-plugin/build/distributions/Keymap-Manager-1.7.0.zip
 ```
 
 If it is missing, rebuild it:
@@ -39,7 +39,7 @@ Then, in each IDE:
 
 1. Open **Settings** (`⌘ ,`) → **Plugins**.
 2. Click the **⚙ gear icon** (top right of the plugin list) → **Install Plugin from Disk…**
-3. Select `Keymap-Manager-1.6.1.zip` → **OK**.
+3. Select `Keymap-Manager-1.7.0.zip` → **OK**.
 4. Click **Restart IDE** when prompted.
 
 > Installing the plugin does **not** switch your active keymap — that is Part 2.
